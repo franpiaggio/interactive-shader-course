@@ -4,7 +4,8 @@ A hands-on, browser-based course that takes you from **"what is a pixel"** to a 
 
 Every lesson runs **live in the page**: real WebGL shaders you can edit, sliders you can drag, and challenges that **grade themselves** by reading the pixels back from the canvas. No build step, no dependencies.
 
-> **▶ Live demo:** https://franpiaggio.github.io/interactive-shader-course/
+> **▶ Live course:** https://franpiaggio.github.io/interactive-shader-course/
+> **🫧 Toy with it:** https://franpiaggio.github.io/interactive-shader-course/demo/metaballs.html — a full-screen, mouse-reactive metaballs shader (one fragment, no meshes)
 
 <!-- Add a screenshot/GIF here for your post, e.g.: ![preview](preview.png) -->
 
