@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lesson 05 — Camera &amp; rays</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+
+<header class="masthead">
+  <p class="kicker">Raymarching for Creative Art · Lesson 05 · Building scenes</p>
+  <h1>A camera you can orbit</h1>
+  <p class="standfirst">Lesson 04 nailed the camera at the origin staring down −Z. To frame a scene
+  like an artist — move around it, aim it, zoom — you build a proper pinhole camera from four vectors.</p>
+</header>
+
+<main>
+
+<div class="goal">
+  <span class="label">Your win this lesson</span>
+  Build a reusable <code>setCamera</code> and drive the ray direction from it — then orbit the camera
+  around your sphere over time.
+</div>
+
+<h2>Four inputs, three basis vectors</h2>
+
+<p>A pinhole camera is fully described by where it is (<code>ro</code>), what it looks at (<code>ta</code>),
+and which way is up (<code>vup</code>, usually <code>(0,1,0)</code>). From those you build an orthonormal
+basis attached to the camera:</p>
+
+<pre><code>mat3 setCamera(vec3 ro, vec3 ta, vec3 vup) {
+    vec3 ww = normalize(ta - ro);          // forward — into the scene
+    vec3 uu = normalize(cross(ww, vup));   // right
+    vec3 vv = cross(uu, ww);               // up (re-orthogonalized)
+    return mat3(uu, vv, ww);               // columns
+}</code></pre>
+
+<p>Per pixel, the ray direction is the basis applied to the UV, pushed forward by the focal length
+(your zoom):</p>
+
+<pre><code>vec3 rd = normalize(cam * vec3(uv, fov));   // fov ~1.0 wide, ~2.5 zoomed-in</code></pre>
+
+<div class="pitfall">
+  <span class="label">Watch for</span>
+  If the look direction is parallel to <code>vup</code> (camera pointing straight up/down),
+  <code>cross(ww, vup)</code> is zero and the basis blows up into NaNs. Pick a different
+  <code>vup</code> for those shots.
+</div>
+
+<h2>Play — orbit and zoom</h2>
+
+<p><strong>Drag on the canvas to orbit</strong> the camera (horizontal = angle, vertical = height).
+Let go and it auto-orbits. The <code>fov</code> slider zooms. The whole scene rotates for free —
+because you're moving the <em>camera</em>, not the objects.</p>
+
+<div id="lab-orbit"></div>
+
+<h2>Now you — make it orbit, graded live</h2>
+
+<p>The camera is parked. Your task: place <code>ro</code> on a circle around the origin that advances
+with <code>iTime</code>, so the view rotates. <strong>Check</strong> verifies the image actually
+changes over time.</p>
+
+<div id="lab-build"></div>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" id="q1"
+  data-q="Why rebuild the up vector as vv = cross(uu, ww) instead of using vup directly?"
+  data-correct="0"
+  data-options='["To force it exactly perpendicular to the other two","To flip the camera upside down for the shot","To make the field of view noticeably wider now","To move the camera origin onto the target point"]'
+  data-feedback="vup is only approximate; cross(uu, ww) gives a vv guaranteed orthogonal to right and forward — a clean basis."></div>
+
+<div class="quiz" id="q2"
+  data-q="In rd = normalize(cam * vec3(uv, fov)), what does a larger fov do?"
+  data-correct="1"
+  data-options='["Widens the view, fitting more of the scene","Narrows the view — zooms in on the subject","Moves the camera physically closer to it","Rotates the camera around its forward axis"]'
+  data-feedback="A larger fov pushes rays more forward and less sideways → a narrower angle of view, i.e. zoomed in."></div>
+
+<div class="source">
+  <span class="label">Primary source — read this next</span>
+  <a href="https://iquilezles.org/articles/raymarchingdf/">IQ — Raymarching SDFs (camera section)</a> and
+  <a href="https://www.scratchapixel.com/lessons/3d-basic-rendering/ray-tracing-generating-camera-rays/generating-camera-rays.html">Scratchapixel — Generating camera rays</a>
+  for the geometry from first principles. See <a href="../RESOURCES.md">RESOURCES.md</a>.
+</div>
+
+<div class="ask">
+  <span class="label">Stuck or curious?</span> Ask me — e.g. <em>"how do I make the camera follow a
+  path?"</em> or <em>"how is this different from a perspective matrix?"</em> When ✓, we move to
+  <strong>Lesson 06 — composing a real scene with a ground and smin.</strong>
+</div>
+
+<nav class="lesson-nav">
+  <span>← <a href="0004-raymarch-your-first-sphere.html">Lesson 04</a></span>
+  <span><a href="../index.html">Index</a> · Next: <a href="0006-scene-composition.html">Lesson 06 — Scene composition</a> →</span>
+</nav>
+
+</main>
+
+<script type="module" src="../assets/quiz.js"></script>
+<script type="module">
+import { createShaderLab } from '../assets/shader-lab.js';
+
+const COMMON =
+`mat3 setCamera(vec3 ro, vec3 ta, vec3 vup){
+    vec3 ww = normalize(ta - ro);
+    vec3 uu = normalize(cross(ww, vup));
+    vec3 vv = cross(uu, ww);
+    return mat3(uu, vv, ww);
+}
+float map(vec3 p){
+    float sphere = length(p) - 1.0;
+    float box    = length(max(abs(p - vec3(1.6,0.0,0.0)) - vec3(0.5), 0.0)) - 0.05;
+    return min(sphere, box);
+}
+float march(vec3 ro, vec3 rd){
+    float t = 0.0;
+    for (int i=0;i<100;i++){ float d=map(ro+rd*t); if(d<0.001) return t; if(t>50.0) break; t+=d; }
+    return -1.0;
+}`;
+
+createShaderLab(document.getElementById('lab-orbit'), {
+  height: 360,
+  uniforms: [ { name: 'uFov', label: 'fov', min: 0.8, max: 3.0, value: 1.5 } ],
+  source: COMMON + `
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    vec2 uv = (fragCoord - 0.5*iResolution.xy) / iResolution.y;
+
+    // drag to orbit; release to auto-orbit
+    float ang = iMouse.z > 0.0 ? (iMouse.x/iResolution.x)*6.2832 : iTime*0.5;
+    float h   = iMouse.z > 0.0 ? (iMouse.y/iResolution.y - 0.5)*4.0 : 1.0;
+    vec3 ro = vec3(4.0*sin(ang), h, 4.0*cos(ang));
+    mat3 cam = setCamera(ro, vec3(0.0), vec3(0.0,1.0,0.0));
+    vec3 rd = normalize(cam * vec3(uv, uFov));
+
+    float t = march(ro, rd);
+    vec3 col = vec3(0.05,0.06,0.10);
+    if (t > 0.0) { vec3 p = ro + rd*t; col = 0.5 + 0.5*cos(p*1.5 + vec3(0.0,1.0,2.0)); }
+    fragColor = vec4(col, 1.0);
+}`,
+});
+
+createShaderLab(document.getElementById('lab-build'), {
+  editable: true, height: 340,
+  source: COMMON + `
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    vec2 uv = (fragCoord - 0.5*iResolution.xy) / iResolution.y;
+
+    // C1: orbit the camera — put ro on a circle around the origin using iTime
+    //     e.g. vec3 ro = vec3(4.0*sin(iTime), 1.0, 4.0*cos(iTime));
+    vec3 ro = vec3(0.0, 1.0, 4.0);
+
+    mat3 cam = setCamera(ro, vec3(0.0), vec3(0.0,1.0,0.0));
+    vec3 rd = normalize(cam * vec3(uv, 1.5));
+
+    float t = march(ro, rd);
+    vec3 col = vec3(0.05,0.06,0.10);
+    if (t > 0.0) { vec3 p = ro + rd*t; col = 0.5 + 0.5*cos(p*1.5 + vec3(0.0,1.0,2.0)); }
+    fragColor = vec4(col, 1.0);
+}`,
+  challenges: [
+    { text: '<b>Orbit it.</b> Drive <code>ro</code> around the origin with <code>iTime</code> so the ' +
+            'view rotates, e.g. <code>vec3 ro = vec3(4.0*sin(iTime), 1.0, 4.0*cos(iTime));</code>',
+      check: async S => (await S.changedOverTime(0.5, 0.5, 0)) || (await S.changedOverTime(0.62, 0.5, 0)) },
+  ],
+});
+</script>
+</body>
+</html>

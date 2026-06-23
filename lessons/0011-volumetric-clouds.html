@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lesson 11 — Volumetric clouds</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+
+<header class="masthead">
+  <p class="kicker">Raymarching for Creative Art · Lesson 11 · Volume</p>
+  <h1>Volumetric clouds</h1>
+  <p class="standfirst">Until now a ray stopped at the first surface. Clouds, smoke, and fog have no
+  surface — so you march <em>through</em> them, sampling density and accumulating light step by step.
+  Same loop, a completely different look.</p>
+</header>
+
+<main>
+
+<div class="goal">
+  <span class="label">Your win this lesson</span>
+  Raymarch a <strong>volume</strong>: step through a noise-based density field, accumulate color and
+  opacity, and light it toward the sun — a drifting cloud you can tune.
+</div>
+
+<h2>Surfaces stop; volumes accumulate</h2>
+
+<p>Instead of <code>if (d &lt; 0.001) hit</code>, you take <em>fixed</em> steps and at each one read a
+<strong>density</strong> (from <a href="0004-raymarch-your-first-sphere.html">fbm noise</a>). You blend
+that step's color onto the running total, weighted by how much light still gets through
+(<code>1 - alpha</code>), and stop when the ray is opaque:</p>
+
+<pre><code>for (int i = 0; i &lt; STEPS; i++) {
+    float d = density(p);                  // 0..1 at this point
+    if (d &gt; 0.01) {
+        vec4 c = vec4(cloudColor, d);       // color + opacity of this slab
+        c.rgb *= c.a;                        // premultiply
+        sum += c * (1.0 - sum.a);            // front-to-back compositing
+    }
+    if (sum.a &gt; 0.99) break;                 // fully opaque — stop early
+    p += rd * stepSize;
+}</code></pre>
+
+<h2>Cheap lighting: density difference toward the sun</h2>
+
+<p>A volume's "normal" is the density gradient. Sample density one short step toward the sun and compare:
+if it drops off, this point is near the lit edge of the cloud and glows; if it stays dense, it's in
+shadow. One subtraction buys believable self-shadowed clouds.</p>
+
+<h2>Play — shape the sky</h2>
+
+<p><code>coverage</code> grows the clouds from wisps to overcast; <code>sun x/y</code> moves the light,
+changing which edges glow. The field drifts with time. This is a postable skyscape on its own.</p>
+
+<div id="lab-clouds"></div>
+
+<h2>Now you — make it cloudy, graded live</h2>
+
+<p>Right now the sky is clear — coverage is zero. Raise <code>COV</code> until clouds fill the frame.
+<strong>Check</strong> verifies real (bright, opaque) cloud appears.</p>
+
+<div id="lab-build"></div>
+
+<div class="pitfall">
+  <span class="label">Watch for</span>
+  Step size is a quality/cost dial: too large and clouds band into slabs; too small and it crawls. And
+  density must be <code>clamp</code>ed to <code>0..1</code> — negative density makes compositing explode.
+</div>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" id="q1"
+  data-q="How does volume marching differ from surface marching?"
+  data-correct="0"
+  data-options='["It takes fixed steps and accumulates density along the ray","It stops at the first surface and reads one normal","It fires four rays per pixel and averages them","It folds the domain so the volume repeats forever"]'
+  data-feedback="No single surface exists, so you sample density at fixed steps and composite color+opacity through the whole volume."></div>
+
+<div class="quiz" id="q2"
+  data-q="How are clouds cheaply self-shadowed in this approach?"
+  data-correct="1"
+  data-options='["By computing a full tetrahedron normal each step","By comparing density a step toward the sun","By baking shadows into a texture beforehand","By raising the hit threshold near the light"]'
+  data-feedback="The density difference toward the sun approximates how much cloud is between this point and the light — a free gradient."></div>
+
+<div class="source">
+  <span class="label">Primary source — read this next</span>
+  <a href="https://iquilezles.org/articles/fog/">IQ — Fog &amp; volumetrics</a> and his classic
+  Shadertoy <a href="https://www.shadertoy.com/view/XslGRr">"Clouds"</a> (read the code). See
+  <a href="../RESOURCES.md">RESOURCES.md</a>.
+</div>
+
+<div class="ask">
+  <span class="label">Stuck or curious?</span> Ask me — e.g. <em>"how do I add a horizon and ground?"</em>
+  or <em>"how do I make smoke rise instead of drift?"</em> When ✓, the finale:
+  <strong>Lesson 12 — materials, polish, and posting your piece to Shadertoy.</strong>
+</div>
+
+<nav class="lesson-nav">
+  <span>← <a href="0010-fractals-menger-sponge.html">Lesson 10</a></span>
+  <span><a href="../index.html">Index</a> · Next: <a href="0012-finishing-and-shadertoy.html">Lesson 12 — Finish &amp; ship</a> →</span>
+</nav>
+
+</main>
+
+<script type="module" src="../assets/quiz.js"></script>
+<script type="module">
+import { createShaderLab } from '../assets/shader-lab.js';
+
+const NOISE =
+`float hash(vec3 p){ p=fract(p*0.3183099+0.1); p*=17.0; return fract(p.x*p.y*p.z*(p.x+p.y+p.z)); }
+float noise(vec3 x){ vec3 i=floor(x), f=fract(x); f=f*f*(3.0-2.0*f);
+    return mix(mix(mix(hash(i+vec3(0,0,0)),hash(i+vec3(1,0,0)),f.x),
+                   mix(hash(i+vec3(0,1,0)),hash(i+vec3(1,1,0)),f.x),f.y),
+               mix(mix(hash(i+vec3(0,0,1)),hash(i+vec3(1,0,1)),f.x),
+                   mix(hash(i+vec3(0,1,1)),hash(i+vec3(1,1,1)),f.x),f.y),f.z); }
+float fbm(vec3 p){ float v=0.0,a=0.5; for(int i=0;i<5;i++){ v+=a*noise(p); p*=2.02; a*=0.5; } return v; }
+// blue sky gradient: deep blue up top, hazy light blue toward the horizon
+vec3 skyCol(vec2 uv){ float h=clamp(uv.y*0.6+0.5,0.0,1.0); return mix(vec3(0.74,0.83,0.93), vec3(0.23,0.47,0.85), h); }
+// coverage 0 -> threshold 0.85 (almost no cloud); higher coverage lowers the bar
+float cloud(vec3 p, float cov){ float f=fbm(p*0.45+vec3(0.0,0.0,iTime*0.15)); return clamp((f-(0.85-cov))*3.0,0.0,1.0); }`;
+
+const CLOUD_RENDER = (covExpr) => `
+    vec2 uv=(fragCoord-0.5*iResolution.xy)/iResolution.y;
+    vec3 ro=vec3(0.0,0.0,0.0);
+    vec3 rd=normalize(vec3(uv,1.0));
+    vec3 sun=normalize(vec3(SUNX,SUNY,1.0));
+
+    vec4 sum=vec4(0.0);
+    float t=1.0;
+    for(int i=0;i<90;i++){
+        if(sum.a>0.99) break;
+        vec3 p=ro+rd*t;
+        float d=cloud(p, ${covExpr});
+        if(d>0.01){
+            float dif=clamp((d - cloud(p+0.3*sun, ${covExpr}))/0.3, 0.0, 1.0);
+            vec3 lin=mix(vec3(0.40,0.44,0.55), vec3(1.0,0.97,0.90), dif);  // shadowed base -> sunlit top
+            vec4 col=vec4(lin, d);
+            col.rgb*=col.a;
+            sum+=col*(1.0-sum.a);
+        }
+        t+=max(0.15, 0.045*t);
+        if(t>50.0) break;
+    }
+    vec3 sky=skyCol(uv);
+    float sd=clamp(dot(rd,sun),0.0,1.0);
+    sky += vec3(1.0,0.85,0.6)*pow(sd,16.0)*0.5;          // soft sun glow
+    vec3 col=sky*(1.0-sum.a)+sum.rgb;
+    col=pow(col, vec3(0.4545));
+    fragColor=vec4(col,1.0);`;
+
+createShaderLab(document.getElementById('lab-clouds'), {
+  height: 400,
+  uniforms: [
+    { name: 'uCov',  label: 'coverage', min: 0.0, max: 0.7, value: 0.35 },
+    { name: 'uSunX', label: 'sun x',    min: -1.0, max: 1.0, value: 0.5 },
+    { name: 'uSunY', label: 'sun y',    min: -0.3, max: 1.0, value: 0.4 },
+  ],
+  source: NOISE + `
+void mainImage(out vec4 fragColor, in vec2 fragCoord){`
+    + CLOUD_RENDER('uCov').replace('SUNX','uSunX').replace('SUNY','uSunY') + `
+}`,
+});
+
+createShaderLab(document.getElementById('lab-build'), {
+  editable: true, height: 380,
+  source: NOISE + `
+// C1: raise coverage — change COV from 0.0 (clear blue sky) to about 0.4 (cloudy)
+const float COV = 0.0;
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord){`
+    + CLOUD_RENDER('COV').replace('SUNX','0.5').replace('SUNY','0.4') + `
+}`,
+  challenges: [
+    { text: '<b>Make it cloudy.</b> Raise <code>COV</code> from <code>0.0</code> to about ' +
+            '<code>0.4</code>. A clear sky is smooth; clouds break it into bright and shadowed patches.',
+      check: S => {
+        // clear sky is uniform along a horizontal line; clouds make it vary a lot
+        let maxRange = 0;
+        for (const v of [0.45, 0.6]) {
+          const lum = [0.2,0.35,0.5,0.65,0.8].map(u => { const c = S.uv(u, v); return (c[0]+c[1]+c[2])/3; });
+          maxRange = Math.max(maxRange, Math.max(...lum) - Math.min(...lum));
+        }
+        return maxRange > 0.08; } },
+  ],
+});
+</script>
+</body>
+</html>

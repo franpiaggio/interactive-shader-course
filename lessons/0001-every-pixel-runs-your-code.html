@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lesson 01 — Every pixel runs your code</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+
+<header class="masthead">
+  <p class="kicker">Raymarching for Creative Art · Lesson 01 · Foundations</p>
+  <h1>Every pixel runs your code</h1>
+  <p class="standfirst">Before you can raymarch a single sphere, you need the one idea every
+  shader is built on: your program runs once per pixel, and its only job is to pick a color.</p>
+</header>
+
+<main>
+
+<div class="goal">
+  <span class="label">Your win this lesson</span>
+  Write a fragment shader that turns each pixel's <em>position</em> into a <em>color</em> — and
+  understand the <code>uv</code> coordinate, which is line 1 of every raymarcher you'll ever write.
+</div>
+
+<h2>The whole mental model</h2>
+
+<p>A <strong>fragment shader</strong> is a tiny program the GPU runs <em>once for every pixel on the
+screen, all at the same time</em>. There is no loop over pixels that <em>you</em> write — the GPU calls
+your function millions of times in parallel. Each call gets one input (which pixel am I?) and must
+produce one output (what color is it?).<sup>1</sup></p>
+
+<p>That's the entire contract. A 3D raymarched scene, a fractal, a cloud — all of it is just
+<em>"given this pixel, compute a color."</em> The art is in the computation.</p>
+
+<h2>Where am I? — <code>fragCoord</code> and <code>uv</code></h2>
+
+<p>The GPU tells each invocation its pixel position in <code>fragCoord</code>, measured in pixels from
+the bottom-left. Raw pixels aren't portable (a 4K screen has different numbers than your phone), so the
+first thing every shader does is <strong>normalize</strong> them by the resolution:</p>
+
+<pre><code>vec2 uv = fragCoord / iResolution.xy;   // now 0.0 → 1.0 across the screen</code></pre>
+
+<p>Now <code>uv.x</code> runs 0 (left) → 1 (right) and <code>uv.y</code> runs 0 (bottom) → 1 (top),
+on <em>any</em> screen. <code>uv</code> is the per-pixel knob that drives the whole image. Feed it into
+a color and you can literally see the coordinate system:</p>
+
+<div class="shader-lab" id="lab-gradient" data-height="280" data-inspect></div>
+<script type="x-shader/frag" data-for="lab-gradient">
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    vec2 uv = fragCoord / iResolution.xy;   // 0..1 across the screen
+    vec3 col = vec3(uv.x, uv.y, 0.5);        // red grows →, green grows ↑
+    fragColor = vec4(col, 1.0);             // rgba; alpha = 1 (opaque)
+}
+</script>
+
+<div class="try">
+  <span class="label">Do this</span>
+  <strong>Move your mouse over the image.</strong> The bar reads the exact <code>fragCoord</code>,
+  <code>uv</code>, and <code>rgb</code> under your cursor — live. Hover the bottom-left corner
+  (<code>uv ≈ 0,0</code>, black), then the top-right (<code>uv ≈ 1,1</code>, yellow). You're literally
+  reading the value a single GPU invocation computed for that pixel.
+</div>
+
+<p>Black bottom-left (uv = 0,0), red-ish bottom-right (uv.x = 1), green-ish top-left (uv.y = 1),
+yellow top-right (both = 1). You're seeing the coordinate system painted directly onto the screen.</p>
+
+<h2>Reading the signature</h2>
+
+<pre><code>void mainImage(out vec4 fragColor, in vec2 fragCoord) { ... }</code></pre>
+
+<p>This is the <strong>mainImage</strong> entry point — the function the harness (and Shadertoy) calls
+for every fragment.</p>
+<ul>
+  <li><code>in vec2 fragCoord</code> — the input: this pixel's position. (<code>in</code> = given to you.)</li>
+  <li><code>out vec4 fragColor</code> — the output: the color you must write. (<code>out</code> = you fill it in.)</li>
+  <li>A <code>vec4</code> is four floats: <code>(r, g, b, a)</code>, each 0→1. <code>vec3</code> is just <code>(r,g,b)</code>.</li>
+</ul>
+
+<div class="note">
+  <span class="label">Runs on Shadertoy unchanged</span>
+  This lab speaks the same dialect as <a href="https://www.shadertoy.com/new">shadertoy.com</a>:
+  same <code>mainImage</code> signature, same <code>iTime</code> / <code>iResolution</code> / <code>iMouse</code>
+  uniforms. Copy any code block here into a new Shadertoy and it just runs.
+</div>
+
+<h2>Now you — edit it, and let it grade you</h2>
+
+<p>This editor recompiles as you type. Below it are three challenges, each with a
+<strong>Check</strong> button that <em>reads the pixels back from the canvas</em> and tells you ✓ or ✗
+on the spot — a real, automatic feedback loop, not "trust yourself." There's a built-in
+<code>iTime</code> (seconds since load) and <code>iMouse</code> (pixel position while you drag).</p>
+
+<div id="lab-play"></div>
+
+<div class="pitfall">
+  <span class="label">Watch for</span>
+  Forgetting the <code>.0</code> on numbers: GLSL is strict about types. <code>uv.x / 2</code> is an
+  error; write <code>uv.x / 2.0</code>. The status bar under the canvas shows the exact line on a typo.
+</div>
+
+<h2>Peek ahead — drag, no code</h2>
+
+<p>Challenge 3 made a field that's <em>0 at a point and grows with distance</em>. Give that field a
+center and a radius and you have a <strong>circle</strong> — and a circle's distance field is the 2D
+baby version of the sphere you'll raymarch. Drag the sliders: <code>uCx/uCy</code> move the center,
+<code>uR</code> sets the radius. No typing — just feel how the coordinate drives the shape.</p>
+
+<div id="lab-explore"></div>
+
+<div class="note">
+  <span class="label">This is the whole arc in miniature</span>
+  <code>d = distance(uv, center) - radius</code> is a <em>signed distance field</em>: negative inside,
+  zero on the edge, positive outside. Swap <code>distance</code> in 2D for <code>length</code> in 3D
+  and that single line becomes the sphere in the raymarch loop. That's Lessons 02–04.
+</div>
+
+<h2>Why this is the raymarching foundation</h2>
+
+<p>Here's the payoff. Open any raymarched scene on Shadertoy and the <em>first line of real work</em>
+is almost always this:</p>
+
+<pre><code>vec2 uv = (fragCoord - 0.5*iResolution.xy) / iResolution.y;  // centered, aspect-correct</code></pre>
+
+<p>Same idea you just learned — normalize the pixel — only <em>centered</em> on the screen (so 0,0 is
+the middle) and divided by height so circles stay round on wide screens. In a raymarcher, this
+<code>uv</code> becomes the <em>direction we shoot a ray</em> through that pixel into a 3D world.
+Master the humble coordinate now and the camera math later will feel obvious.</p>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" id="q1"
+  data-q="What does a fragment shader's mainImage function compute?"
+  data-correct="1"
+  data-options='["The shape of every mesh in the visible scene now","The single output color for one screen pixel now","The list of every pixel the GPU will draw now","The camera position used to render the frame now"]'
+  data-feedback="It runs once per pixel and returns just that pixel's color — the GPU runs it for all pixels in parallel."></div>
+
+<div class="quiz" id="q2"
+  data-q="Why divide fragCoord by iResolution before using it?"
+  data-correct="0"
+  data-options='["To map pixels to a 0–1 range on any screen size","To convert the color values from bytes to floats","To rotate the coordinates ninety degrees clockwise","To move the origin point to the screen center"]'
+  data-feedback="Normalizing makes coordinates resolution-independent: 0→1 left-to-right regardless of the display."></div>
+
+<div class="source">
+  <span class="label">Primary source — read this next</span>
+  <a href="https://thebookofshaders.com/01/">The Book of Shaders — Ch. 1 &amp; 2</a>
+  (Patricio Gonzalez Vivo &amp; Jen Lowe). The gentlest, most trusted on-ramp to the
+  "every pixel runs your code" model. ~15 minutes, with its own live editor.
+  More sources in <a href="../RESOURCES.md">RESOURCES.md</a>.
+</div>
+
+<div class="ask">
+  <span class="label">Stuck or curious?</span> I'm your teacher — ask me anything that's unclear.
+  Good things to ask right now: <em>"why is the y-axis flipped from normal screen coords?"</em>,
+  <em>"what's the difference between vec3 and vec4 really?"</em>, or <em>"show me what the centered uv
+  looks like."</em> When you've done the three challenges, tell me and we'll move to
+  <strong>Lesson 02 — shaping a glowing circle</strong>, the first step toward describing shapes as distance.
+</div>
+
+<p style="font-size:0.8rem;color:var(--ink-soft);margin-top:2rem">
+  <sup>1</sup> The GPU also runs a <em>vertex</em> shader first, but for full-screen art it just draws one
+  rectangle covering the screen — so effectively your fragment shader <em>is</em> the whole program.
+  Vertex shaders are out of scope for this mission.
+</p>
+
+<nav class="lesson-nav">
+  <span><a href="../index.html">← Index</a></span>
+  <span>Next: <a href="0002-shaping-a-glowing-circle.html">Lesson 02 — Shaping a glowing circle</a> →</span>
+</nav>
+
+</main>
+
+<script type="module" src="../assets/quiz.js"></script>
+<script type="module">
+import { createShaderLab, autoMount } from '../assets/shader-lab.js';
+autoMount();   // wires the simple labs (gradient + inspector)
+
+// --- editable lab with auto-graded challenges ---
+createShaderLab(document.getElementById('lab-play'), {
+  editable: true, height: 300,
+  source:
+`void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    vec2 uv = fragCoord / iResolution.xy;
+
+    // edit me, then hit "Check" on each challenge below
+    vec3 col = vec3(uv.x, uv.y, 0.5);
+
+    fragColor = vec4(col, 1.0);
+}`,
+  challenges: [
+    { text: '<b>Flip it.</b> Make red grow <em>downward</em> — bright at the bottom, dark at the top. ' +
+            '<em>Hint:</em> use <code>1.0 - uv.y</code> for the red channel.',
+      check: S => { const bot = S.uv(0.5, 0.08)[0], top = S.uv(0.5, 0.92)[0];
+                    return bot > 0.6 && top < 0.4; } },
+    { text: '<b>Animate.</b> Make the blue channel pulse over time with ' +
+            '<code>0.5 + 0.5*sin(iTime)</code>.',
+      check: S => S.changedOverTime(0.5, 0.5, 2) },
+    { text: '<b>Center it.</b> Replace the color with <code>vec3(distance(uv, vec2(0.5)))</code> — ' +
+            'dark at the screen center, brighter toward the corners. <em>That field is a 2D SDF.</em>',
+      check: S => { const c = S.uv(0.5, 0.5)[0], corner = S.uv(0.04, 0.04)[0];
+                    return c < 0.15 && corner > 0.4; } },
+  ],
+});
+
+// --- no-code slider explorer: a circle's signed distance field ---
+createShaderLab(document.getElementById('lab-explore'), {
+  height: 300,
+  uniforms: [
+    { name: 'uCx', label: 'center x', min: 0, max: 1, value: 0.5 },
+    { name: 'uCy', label: 'center y', min: 0, max: 1, value: 0.5 },
+    { name: 'uR',  label: 'radius',   min: 0.04, max: 0.5, value: 0.2 },
+  ],
+  source:
+`void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    vec2 uv = fragCoord / iResolution.xy;
+    float a = iResolution.x / iResolution.y;   // aspect, so the circle stays round
+    vec2 p = vec2(uv.x * a, uv.y);
+    vec2 c = vec2(uCx * a, uCy);
+
+    float d = distance(p, c) - uR;             // signed distance to the circle
+
+    vec3 rings = vec3(0.5 + 0.5 * sin(d * 50.0)) * vec3(0.18, 0.22, 0.30);
+    vec3 col   = d < 0.0 ? vec3(1.0, 0.55, 0.2) // inside: filled
+                         : rings;                // outside: distance shown as rings
+    fragColor = vec4(col, 1.0);
+}`,
+});
+</script>
+</body>
+</html>

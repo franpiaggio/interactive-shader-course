@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lesson 08 — Color: palettes &amp; specular</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+
+<header class="masthead">
+  <p class="kicker">Raymarching for Creative Art · Lesson 08 · Making it beautiful</p>
+  <h1>Color: cosine palettes &amp; specular</h1>
+  <p class="standfirst">Technique gets you a lit sphere. <em>Color</em> is what makes it art. Two tools do
+  most of the work: IQ's cosine palettes for rich, controllable color, and a specular highlight to make
+  surfaces look like they catch light.</p>
+</header>
+
+<main>
+
+<div class="goal">
+  <span class="label">Your win this lesson</span>
+  Drive surface color with a <strong>cosine palette</strong> and add a <strong>specular highlight</strong>
+  — the two moves that take a render from "diagram" to "image."
+</div>
+
+<h2>Cosine palettes</h2>
+
+<p>A whole color ramp from four <code>vec3</code> constants. <code>t</code> is any 0→1 driver — depth,
+height, normal, iteration count — and the cosine cycles smoothly through hues:</p>
+
+<pre><code>vec3 palette(float t) {
+    vec3 a = vec3(0.5), b = vec3(0.5);       // base + amplitude
+    vec3 c = vec3(1.0), d = vec3(0.0,0.33,0.67); // frequency + phase per channel
+    return a + b*cos(6.28318*(c*t + d));
+}</code></pre>
+
+<p>The phase <code>d</code> offsets red/green/blue differently, so the ramp sweeps through a designed
+range instead of plain grayscale. Change four numbers, get a new mood.</p>
+
+<h2>Specular — the catch-light</h2>
+
+<p>Diffuse is how much a surface faces the light. <strong>Specular</strong> is a shiny reflection of the
+light toward the camera — bright where the half-vector between light and view aligns with the normal:</p>
+
+<pre><code>vec3 h = normalize(lightDir - rd);          // half-vector (view dir = -rd)
+float spec = pow(max(dot(n, h), 0.0), shininess);  // tight, bright highlight
+col += spec * vec3(1.0);                      // add a white glint</code></pre>
+
+<h2>Play — design the look</h2>
+
+<p>The finished scene, driven by color. <code>phase</code> shifts the palette through different moods,
+<code>freq</code> tightens the bands, <code>shine</code> sizes the specular glint. Find a palette you'd
+actually post.</p>
+
+<div id="lab-look"></div>
+
+<h2>Now you — color &amp; shine it, graded live</h2>
+
+<p>A lit but gray sphere. Task 1: color it with the palette. Task 2: add the specular glint.
+<strong>Check</strong> grades each.</p>
+
+<div id="lab-build"></div>
+
+<div class="pitfall">
+  <span class="label">Watch for</span>
+  Specular goes <em>on top of</em> diffuse, added not multiplied, and uses white (the light's color),
+  not the material color. High <code>shininess</code> → tiny sharp glint; low → broad sheen.
+</div>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" id="q1"
+  data-q="What does the phase term d in a cosine palette control?"
+  data-correct="0"
+  data-options='["Where each channel sits in the color cycle now","How fast the camera orbits the scene now","The radius of the specular highlight spot","The maximum distance the ray may travel"]'
+  data-feedback="d offsets r/g/b independently in the cosine, choosing which hues the ramp sweeps through."></div>
+
+<div class="quiz" id="q2"
+  data-q="How does specular differ from diffuse shading?"
+  data-correct="1"
+  data-options='["Specular fills the shadowed side with base light","Specular is a view-dependent glint toward the camera","Specular replaces the surface normal with the ray","Specular is the fog blended in by distance traveled"]'
+  data-feedback="Diffuse depends only on the light angle; specular depends on the viewer too — it's the shiny reflection of the light."></div>
+
+<div class="source">
+  <span class="label">Primary source — read this next</span>
+  <a href="https://iquilezles.org/articles/palettes/">IQ — Cosine palettes</a> (with an interactive
+  picker) and <a href="https://learnopengl.com/Lighting/Basic-Lighting">LearnOpenGL — Basic Lighting</a>
+  for diffuse/specular. See <a href="../RESOURCES.md">RESOURCES.md</a>.
+</div>
+
+<div class="ask">
+  <span class="label">Stuck or curious?</span> Ask me — e.g. <em>"how do I pick palette constants for a
+  sunset?"</em> or <em>"what's Fresnel and why do edges glow?"</em> When both are ✓, next is
+  <strong>Lesson 09 — domain repetition: infinite worlds from one shape.</strong>
+</div>
+
+<nav class="lesson-nav">
+  <span>← <a href="0007-normals-light-and-shadows.html">Lesson 07</a></span>
+  <span><a href="../index.html">Index</a> · Next: <a href="0009-domain-repetition.html">Lesson 09 — Domain repetition</a> →</span>
+</nav>
+
+</main>
+
+<script type="module" src="../assets/quiz.js"></script>
+<script type="module">
+import { createShaderLab } from '../assets/shader-lab.js';
+
+createShaderLab(document.getElementById('lab-look'), {
+  height: 380,
+  uniforms: [
+    { name: 'uPhase', label: 'phase', min: 0.0, max: 1.0, value: 0.0 },
+    { name: 'uFreq',  label: 'freq',  min: 0.3, max: 2.5, value: 1.0 },
+    { name: 'uShin',  label: 'shine', min: 4.0, max: 64.0, value: 24.0 },
+  ],
+  source:
+`vec3 palette(float t){ return 0.5 + 0.5*cos(6.28318*(uFreq*t + vec3(0.0,0.33,0.67) + uPhase)); }
+float smin(float a,float b,float k){ float h=clamp(0.5+0.5*(b-a)/k,0.0,1.0); return mix(b,a,h)-k*h*(1.0-h); }
+float map(vec3 p){
+    float ground = p.y + 1.0;
+    float blob = smin(length(p)-0.9, length(max(abs(p-vec3(1.0,0.2,0.0))-vec3(0.45),0.0))-0.05, 0.35);
+    return min(ground, blob);
+}
+float march(vec3 ro, vec3 rd){ float t=0.0; for(int i=0;i<128;i++){ float d=map(ro+rd*t); if(d<0.001) return t; if(t>60.0) break; t+=d; } return -1.0; }
+vec3 calcNormal(vec3 p){ vec2 e=vec2(1.0,-1.0)*0.5773*0.0008;
+    return normalize(e.xyy*map(p+e.xyy)+e.yyx*map(p+e.yyx)+e.yxy*map(p+e.yxy)+e.xxx*map(p+e.xxx)); }
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord){
+    vec2 uv=(fragCoord-0.5*iResolution.xy)/iResolution.y;
+    vec3 ro=vec3(2.6,1.5,3.6);
+    vec3 ww=normalize(vec3(0.0,0.1,0.0)-ro), uu=normalize(cross(ww,vec3(0,1,0))), vv=cross(uu,ww);
+    vec3 rd=normalize(mat3(uu,vv,ww)*vec3(uv,1.6));
+    vec3 sky=vec3(0.55,0.65,0.8);
+    vec3 col=sky;
+    float t=march(ro,rd);
+    if(t>0.0){
+        vec3 p=ro+rd*t; vec3 n=calcNormal(p);
+        vec3 L=normalize(vec3(0.7,0.9,0.5));
+        float diff=max(dot(n,L),0.0);
+        vec3 h=normalize(L-rd);
+        float spec=pow(max(dot(n,h),0.0), uShin);
+        vec3 base=palette(p.y*0.5 + t*0.05);
+        col = base*(0.2 + diff) + spec*vec3(1.0);
+        col=mix(col,sky,1.0-exp(-t*0.05));
+    }
+    col=pow(col,vec3(0.4545));
+    fragColor=vec4(col,1.0);
+}`,
+});
+
+createShaderLab(document.getElementById('lab-build'), {
+  editable: true, height: 360,
+  source:
+`vec3 palette(float t){ return 0.5 + 0.5*cos(6.28318*(t + vec3(0.0,0.33,0.67))); }
+float map(vec3 p){ return length(p) - 1.2; }
+float march(vec3 ro, vec3 rd){ float t=0.0; for(int i=0;i<120;i++){ float d=map(ro+rd*t); if(d<0.001) return t; if(t>50.0) break; t+=d; } return -1.0; }
+vec3 calcNormal(vec3 p){ vec2 e=vec2(1.0,-1.0)*0.5773*0.0008;
+    return normalize(e.xyy*map(p+e.xyy)+e.yyx*map(p+e.yyx)+e.yxy*map(p+e.yxy)+e.xxx*map(p+e.xxx)); }
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord){
+    vec2 uv=(fragCoord-0.5*iResolution.xy)/iResolution.y;
+    vec3 ro=vec3(0.0,0.0,4.0);
+    vec3 rd=normalize(vec3(uv,-1.5));
+    float t=march(ro,rd);
+    vec3 col=vec3(0.05,0.06,0.10);
+    if(t>0.0){
+        vec3 p=ro+rd*t;
+        vec3 n=calcNormal(p);
+        vec3 L=normalize(vec3(0.6,0.6,0.7));
+        float diff=max(dot(n,L),0.0);
+        vec3 h=normalize(L-rd);
+
+        // C1: color the surface — replace the gray base with palette(p.y*0.5)
+        vec3 base=vec3(0.6);
+        col = vec3(0.1) + diff*base*0.9;
+
+        // C2: add a specular glint on top:
+        //   float spec=pow(max(dot(n,h),0.0),16.0);
+        //   col += spec*vec3(1.0);
+    }
+    fragColor=vec4(col,1.0);
+}`,
+  challenges: [
+    { text: '<b>Color it.</b> Replace <code>base = vec3(0.6)</code> with ' +
+            '<code>palette(p.y*0.5)</code> so different parts take different hues.',
+      check: S => { for (const [u,v] of [[0.5,0.62],[0.5,0.4],[0.42,0.55],[0.6,0.45]]) {
+                      const c = S.uv(u,v); if (Math.max(c[0],c[1],c[2]) - Math.min(c[0],c[1],c[2]) > 0.18) return true; }
+                    return false; } },
+    { text: '<b>Add specular.</b> Compute <code>spec = pow(max(dot(n,h),0.0), 16.0)</code> and ' +
+            '<code>col += spec*vec3(1.0)</code> — a bright glint should appear on the sphere.',
+      check: S => { for (const [u,v] of [[0.45,0.58],[0.5,0.6],[0.4,0.6],[0.48,0.55],[0.43,0.62]]) {
+                      const c = S.uv(u,v); if (Math.min(c[0],c[1],c[2]) > 0.8) return true; }
+                    return false; } },
+  ],
+});
+</script>
+</body>
+</html>

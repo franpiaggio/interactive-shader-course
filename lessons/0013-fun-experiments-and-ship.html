@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lesson 13 — Fun experiments &amp; ship them</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+<style>
+  .ship {
+    margin: 1rem 0 2.5rem; padding: 0.9rem 1.1rem; border-radius: 6px;
+    background: var(--code-bg); border-left: 3px solid var(--accent);
+    font-size: 0.9rem; max-width: var(--measure);
+  }
+  .ship a { font-weight: 600; }
+  .finale {
+    margin-top: 3rem; padding: 1.6rem; border-radius: 10px; text-align: center;
+    background: radial-gradient(circle at 50% 0%, #20283c, #0e1019); color: #e7ecf6;
+    max-width: var(--measure);
+  }
+  .finale h2 { color: #fff; margin-top: 0; }
+  .finale .cta {
+    display: inline-block; margin-top: 0.6rem; background: var(--accent); color: #fff;
+    padding: 0.7rem 1.5rem; border-radius: 999px; font: 600 0.95rem/1 ui-monospace, monospace;
+    text-decoration: none; border: none;
+  }
+  .finale .cta:hover { background: var(--accent-dim); }
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <p class="kicker">Raymarching for Creative Art · Lesson 13 · The send-off</p>
+  <h1>Fun experiments &amp; ship them</h1>
+  <p class="standfirst">No new theory — just proof of how far the toolkit goes. Three showpieces built
+  <em>only</em> from things you've already done. Play with each, read the one idea that makes it tick,
+  then take it to Shadertoy.</p>
+</header>
+
+<main>
+
+<div class="note">
+  <span class="label">How to use this lesson</span>
+  Hit <strong>▶ Run</strong>, drag the sliders, and watch what each one changes — that's how you learn
+  what a shader <em>does</em>. The full code sits under each one, ready to paste into Shadertoy. Slider
+  values shown there are already baked in as <code>const</code>s, so it runs unchanged.
+</div>
+
+<h2>1 · Lava lamp — orbiting metaballs</h2>
+
+<p>Six spheres drift on sine waves and melt together with <a href="0003-combining-shapes-sdf-booleans.html">
+<code>smin</code></a>, raymarched (<a href="0004-raymarch-your-first-sphere.html">L4</a>), then lit with
+diffuse + specular (<a href="0007-normals-light-and-shadows.html">L7</a>), a
+<a href="0008-color-palettes-and-specular.html">cosine palette</a>, and a <strong>Fresnel rim</strong>
+(edges glow when you look across them). <em>blend</em> is the magic: low = separate blobs, high = one
+gooey mass.</p>
+
+<div id="lab-lava"></div>
+<div class="ship">Code (Shadertoy-ready): <a href="https://www.shadertoy.com/new" target="_blank">open a new shader</a> and paste ↓</div>
+<pre><code id="code-lava"></code></pre>
+
+<h2>2 · Neon tunnel — infinite rings</h2>
+
+<p>No raymarching at all — just <a href="0001-every-pixel-runs-your-code.html">2D UVs</a> in polar form.
+The whole illusion is one line: <code>depth = 0.35/r</code> — dividing by the radius makes the center
+read as <em>far away</em> (perspective), so concentric rings become a corridor. Add <code>iTime</code> to
+that depth and the ribs <strong>rush toward you</strong> — you're flying. <em>speed</em> sets how fast
+you fly; <em>bend</em> makes the corridor <strong>turn</strong> — its vanishing point steers around like
+driving through curves, and the slider sets how sharp the turns get (0 = dead straight). A
+<a href="0008-color-palettes-and-specular.html">palette</a> driven by depth recolors the walls as they pass.</p>
+
+<div id="lab-tunnel"></div>
+<div class="ship">Code (Shadertoy-ready): <a href="https://www.shadertoy.com/new" target="_blank">open a new shader</a> and paste ↓</div>
+<pre><code id="code-tunnel"></code></pre>
+
+<h2>3 · Kaleidoscope plasma — pure 2D</h2>
+
+<p>Back to <a href="0001-every-pixel-runs-your-code.html">2D UVs</a>: fold the angle into a mirrored
+wedge (a kaleidoscope), sample <a href="0011-volumetric-clouds.html">fbm noise</a> drifting in time, and
+color it with a <a href="0008-color-palettes-and-specular.html">palette</a>. No 3D at all — and still
+mesmerizing. <em>segments</em> sets the symmetry; <em>scale</em> the swirl detail.</p>
+
+<div id="lab-kaleido"></div>
+<div class="ship">Code (Shadertoy-ready): <a href="https://www.shadertoy.com/new" target="_blank">open a new shader</a> and paste ↓</div>
+<pre><code id="code-kaleido"></code></pre>
+
+<div class="finale">
+  <h2>Now go make something nobody's seen.</h2>
+  <p>You can build, light, color, repeat, and animate a scene from a blank editor — the whole mission.
+  Pick the experiment that grabbed you, open Shadertoy, paste it, hit ▶, and start turning the numbers.
+  That's the entire craft: change a value, watch what happens, keep what's beautiful.</p>
+  <a class="cta" href="https://www.shadertoy.com/new" target="_blank">▶ Go to Shadertoy &amp; try it</a>
+</div>
+
+<div class="ask">
+  <span class="label">One more thing</span> When you make something you like, show me — I'll help you
+  polish it, debug a weird artifact, or push it further (reflections, terrain, SDF text, audio-reactive).
+  This is the start, not the end. 🎨
+</div>
+
+<nav class="lesson-nav">
+  <span>← <a href="0012-finishing-and-shadertoy.html">Lesson 12</a></span>
+  <span><a href="../index.html">Index</a> · 🏁 End of the course</span>
+</nav>
+
+</main>
+
+<script type="module" src="../assets/quiz.js"></script>
+<script type="module">
+import { createShaderLab } from '../assets/shader-lab.js';
+
+const SRC_LAVA =
+`vec3 palette(float t){ return 0.5+0.5*cos(6.28318*(t+vec3(0.0,0.33,0.67))); }
+float smin(float a,float b,float k){ float h=clamp(0.5+0.5*(b-a)/k,0.0,1.0); return mix(b,a,h)-k*h*(1.0-h); }
+float map(vec3 p){
+    float d=1e9;
+    for(int i=0;i<6;i++){ float fi=float(i);
+        vec3 c=vec3(1.4*sin(iTime*uSpeed+fi*1.7), 1.1*cos(iTime*uSpeed*0.8+fi*2.3), 1.0*sin(iTime*uSpeed*0.6+fi*1.1));
+        d=smin(d, length(p-c)-0.55, uBlend); }
+    return d;
+}
+float march(vec3 ro,vec3 rd){ float t=0.0; for(int i=0;i<90;i++){ float d=map(ro+rd*t); if(d<0.001) return t; if(t>30.0) break; t+=d; } return -1.0; }
+vec3 nrm(vec3 p){ vec2 e=vec2(1.0,-1.0)*0.5773*0.001; return normalize(e.xyy*map(p+e.xyy)+e.yyx*map(p+e.yyx)+e.yxy*map(p+e.yxy)+e.xxx*map(p+e.xxx)); }
+void mainImage(out vec4 fragColor, in vec2 fragCoord){
+    vec2 uv=(fragCoord-0.5*iResolution.xy)/iResolution.y;
+    vec3 ro=vec3(0.0,0.0,5.0);
+    vec3 rd=normalize(vec3(uv,-1.4));
+    vec3 bg=mix(vec3(0.04,0.02,0.08), vec3(0.11,0.04,0.17), uv.y+0.5);
+    vec3 col=bg;
+    float t=march(ro,rd);
+    if(t>0.0){
+        vec3 p=ro+rd*t; vec3 n=nrm(p);
+        vec3 L=normalize(vec3(0.6,0.8,0.6));
+        float diff=max(dot(n,L),0.0);
+        float fres=pow(1.0-max(dot(n,-rd),0.0), 2.5);
+        float spec=pow(max(dot(n,normalize(L-rd)),0.0), 32.0);
+        vec3 base=palette(uPhase + 0.15*p.y + 0.1*length(p));
+        col=base*(0.25+diff) + spec*vec3(1.0) + fres*base*1.3;
+        col=mix(col,bg,1.0-exp(-t*0.06));
+    }
+    col=pow(col,vec3(0.4545));
+    fragColor=vec4(col,1.0);
+}`;
+
+const SRC_TUNNEL =
+`vec3 palette(float t){ return 0.5+0.5*cos(6.28318*(t+vec3(0.0,0.33,0.67))); }
+void mainImage(out vec4 fragColor, in vec2 fragCoord){
+    vec2 uv=(fragCoord-0.5*iResolution.xy)/iResolution.y;
+    float t = iTime*uSpeed;
+
+    // the corridor TURNS: its vanishing point steers around over time, like driving
+    // through bends. uBend = how far it swings -> how sharp the turns are.
+    vec2 turn = vec2(sin(t*0.6), cos(t*0.45)) * uBend;
+    vec2 p = uv - turn;
+
+    float r = length(p);
+    float a = atan(p.y, p.x);
+
+    // 1/r is the perspective trick: center = far away. +t flies us forward.
+    float depth = 0.35/r + t;
+
+    float rings  = 0.5+0.5*sin(depth*12.0);         // ribs rushing toward you
+    float flutes = 0.5+0.5*sin(a*10.0);             // grooves around the wall
+    float pat = rings*(0.55+0.45*flutes);
+
+    vec3 col = palette(uPhase + depth*0.12) * (0.25 + pat);
+    col += palette(uPhase+0.5) * smoothstep(0.55,0.0,r) * 0.25;  // glow into the distance
+    col *= smoothstep(0.0,0.16,r);                  // dark vanishing point follows the turn
+    col = col/(1.0+col*0.5);                        // gentle tonemap
+    col = pow(col, vec3(0.4545));
+    fragColor=vec4(col,1.0);
+}`;
+
+const SRC_KALEIDO =
+`vec3 palette(float t){ return 0.5+0.5*cos(6.28318*(t+vec3(0.0,0.33,0.67))); }
+float hash(vec3 p){ p=fract(p*0.3183099+0.1); p*=17.0; return fract(p.x*p.y*p.z*(p.x+p.y+p.z)); }
+float noise(vec3 x){ vec3 i=floor(x),f=fract(x); f=f*f*(3.0-2.0*f);
+    return mix(mix(mix(hash(i+vec3(0,0,0)),hash(i+vec3(1,0,0)),f.x),mix(hash(i+vec3(0,1,0)),hash(i+vec3(1,1,0)),f.x),f.y),
+               mix(mix(hash(i+vec3(0,0,1)),hash(i+vec3(1,0,1)),f.x),mix(hash(i+vec3(0,1,1)),hash(i+vec3(1,1,1)),f.x),f.y),f.z); }
+float fbm(vec3 p){ float v=0.0,a=0.5; for(int i=0;i<5;i++){ v+=a*noise(p); p*=2.02; a*=0.5; } return v; }
+void mainImage(out vec4 fragColor, in vec2 fragCoord){
+    vec2 uv=(fragCoord-0.5*iResolution.xy)/iResolution.y;
+    float seg=floor(uSeg);
+    float a=atan(uv.y,uv.x), r=length(uv), w=6.28318/seg;
+    a=mod(a,w); a=abs(a-w*0.5);            // mirror into a wedge
+    vec2 p=r*vec2(cos(a),sin(a));
+    float v=fbm(vec3(p*uScale, iTime*0.25));
+    vec3 col=palette(uPhase + v*1.2 + r*0.5);
+    col*=smoothstep(1.3,0.1,r)*1.1;        // gentle vignette
+    col=pow(col,vec3(0.4545));
+    fragColor=vec4(col,1.0);
+}`;
+
+createShaderLab(document.getElementById('lab-lava'), {
+  height: 400,
+  uniforms: [
+    { name: 'uSpeed', label: 'speed', min: 0.0, max: 1.6, value: 0.6 },
+    { name: 'uBlend', label: 'blend', min: 0.15, max: 1.2, value: 0.6 },
+    { name: 'uPhase', label: 'palette', min: 0.0, max: 1.0, value: 0.0 },
+  ],
+  source: SRC_LAVA,
+});
+
+createShaderLab(document.getElementById('lab-tunnel'), {
+  height: 400,
+  uniforms: [
+    { name: 'uSpeed', label: 'speed', min: 0.2, max: 4.0, value: 1.6 },
+    { name: 'uBend',  label: 'bend',  min: 0.0, max: 1.2, value: 0.5 },
+    { name: 'uPhase', label: 'palette', min: 0.0, max: 1.0, value: 0.0 },
+  ],
+  source: SRC_TUNNEL,
+});
+
+createShaderLab(document.getElementById('lab-kaleido'), {
+  height: 400,
+  uniforms: [
+    { name: 'uSeg',   label: 'segments', min: 3, max: 12, step: 1, value: 6 },
+    { name: 'uScale', label: 'scale', min: 1.0, max: 6.0, value: 3.0 },
+    { name: 'uPhase', label: 'palette', min: 0.0, max: 1.0, value: 0.0 },
+  ],
+  source: SRC_KALEIDO,
+});
+
+// fill the copyable code blocks with slider values baked in as constants
+document.getElementById('code-lava').textContent =
+  '// Lava lamp — paste into shadertoy.com/new. Tweak these:\nconst float uSpeed=0.6, uBlend=0.6, uPhase=0.0;\n\n' + SRC_LAVA;
+document.getElementById('code-tunnel').textContent =
+  '// Neon tunnel — paste into shadertoy.com/new. Tweak these:\nconst float uSpeed=1.6, uBend=0.5, uPhase=0.0;\n\n' + SRC_TUNNEL;
+document.getElementById('code-kaleido').textContent =
+  '// Kaleidoscope plasma — paste into shadertoy.com/new. Tweak these:\nconst float uSeg=6.0, uScale=3.0, uPhase=0.0;\n\n' + SRC_KALEIDO;
+</script>
+</body>
+</html>

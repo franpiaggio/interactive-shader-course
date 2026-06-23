@@ -1,0 +1,13 @@
+# OS
+.DS_Store
+
+# Teaching-skill machinery (not part of the shareable course)
+.agents/
+.claude
+skills-lock.json
+
+# Private teaching notes
+NOTES.md
+
+# Misc
+*.log

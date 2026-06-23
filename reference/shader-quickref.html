@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Reference — Shader quick reference</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+<style>
+  /* denser layout for a reference sheet */
+  body { max-width: 64rem; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:1.2rem; max-width:none; }
+  @media (max-width:700px){ .grid{ grid-template-columns:1fr; } }
+  .grid h2 { margin-top:0; }
+  pre { font-size:0.78rem; }
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <p class="kicker">Raymarching for Creative Art · Reference</p>
+  <h1>Shader quick reference</h1>
+  <p class="standfirst">The compressed essentials, in one printable page. Grows as the course does.
+  Adheres to <a href="../GLOSSARY.md">the glossary</a>.</p>
+</header>
+
+<main>
+<div class="grid">
+
+<section>
+<h2>The harness contract</h2>
+<p>Every lab + Shadertoy gives you these for free:</p>
+<pre><code>uniform vec3  iResolution; // viewport px (.xy)
+uniform float iTime;       // seconds since start
+uniform vec4  iMouse;      // .xy = px while dragging
+                           // .z  &gt; 0 while pressed
+
+void mainImage(out vec4 fragColor,   // ← you write
+               in  vec2 fragCoord) { // ← pixel pos
+    fragColor = vec4(1.0, 0.0, 0.0, 1.0); // red
+}</code></pre>
+<p><code>in</code> = given to you · <code>out</code> = you fill it.</p>
+</section>
+
+<section>
+<h2>UV recipes</h2>
+<pre><code>// 0..1 across screen (color/texture work)
+vec2 uv = fragCoord / iResolution.xy;
+
+// centered, aspect-correct (shapes, SDFs,
+// raymarch camera) — 0,0 is screen center
+vec2 uv = (fragCoord - 0.5*iResolution.xy)
+          / iResolution.y;</code></pre>
+<p>Use the <strong>centered</strong> form for anything geometric — it keeps circles round on wide screens
+and puts the origin where you think it is.</p>
+</section>
+
+<section>
+<h2>Vector types &amp; swizzling</h2>
+<pre><code>vec2 a = vec2(1.0, 2.0);
+vec3 c = vec3(1.0);        // (1,1,1)
+vec4 p = vec4(c, 1.0);    // build from parts
+float x = p.x;  vec2 yz = p.yz;   // swizzle
+vec3 bgr = c.bgr;          // reorder freely</code></pre>
+<p>Color is just a vector: <code>vec3</code> = <code>(r,g,b)</code>, <code>vec4</code> = <code>(r,g,b,a)</code>,
+each component 0→1.</p>
+</section>
+
+<section>
+<h2>GLSL gotchas</h2>
+<ul>
+  <li><strong>Type-strict:</strong> <code>1/2</code> ✗ → write <code>1.0/2.0</code>. Always put <code>.0</code> on floats.</li>
+  <li><strong>No implicit int↔float.</strong> <code>float(i)</code> to convert a loop counter.</li>
+  <li>Y points <strong>up</strong> (bottom-left origin), unlike most 2D screen APIs.</li>
+  <li>The lab's status bar shows the exact error line on a typo.</li>
+</ul>
+</section>
+
+</div>
+
+<h2>The raymarching loop (the destination)</h2>
+<p>Where the course is heading — module 05 in ten lines. Each future lesson expands one part:</p>
+<pre><code>float map(vec3 p) { return length(p) - 1.0; }     // the scene: a unit sphere as a distance field
+
+float raymarch(vec3 ro, vec3 rd) {                // ro = ray origin (camera), rd = ray direction (per pixel)
+    float t = 0.0;
+    for (int i = 0; i &lt; 100; i++) {
+        float d = map(ro + rd * t);               // distance to nearest surface from here
+        if (d &lt; 0.001) return t;                  // hit
+        if (t &gt; 50.0)  break;                      // miss — gone too far
+        t += d;                                    // safe step: move by the closest distance
+    }
+    return -1.0;
+}</code></pre>
+<p class="standfirst" style="font-size:1rem">Don't worry if this is opaque now — by the time we reach it,
+every line will be something you've already built.</p>
+
+<div class="source">
+  <span class="label">Authoritative toolboxes — keep open while making art</span>
+  <a href="https://iquilezles.org/articles/distfunctions/">IQ · 3D SDF catalogue</a> ·
+  <a href="https://iquilezles.org/articles/palettes/">IQ · cosine palettes</a> ·
+  <a href="https://thebookofshaders.com/">The Book of Shaders</a>. Full list in
+  <a href="../RESOURCES.md">RESOURCES.md</a>.
+</div>
+
+<nav class="lesson-nav">
+  <span>← <a href="../lessons/0001-every-pixel-runs-your-code.html">Lesson 01</a></span>
+  <span>Reference grows each lesson</span>
+</nav>
+
+</main>
+</body>
+</html>

@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lesson 10 — Fractals: the Menger sponge</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+
+<header class="masthead">
+  <p class="kicker">Raymarching for Creative Art · Lesson 10 · Infinite detail</p>
+  <h1>Fractals: the Menger sponge</h1>
+  <p class="standfirst">This is what raymarching does that nothing else can touch: infinite, self-similar
+  detail from a few lines of math. A loop that carves the same hole at ever-smaller scales builds a
+  structure no mesh could ever store.</p>
+</header>
+
+<main>
+
+<div class="goal">
+  <span class="label">Your win this lesson</span>
+  Understand and run an iterated SDF — the Menger sponge — and control its recursion depth, the moment
+  procedural detail becomes effectively free.
+</div>
+
+<h2>Self-similarity by iteration</h2>
+
+<p>Start with a box. Carve a cross-shaped hole through it (that's the "+1" Menger step). Now do the
+<em>same carve</em> again on each remaining piece, three times smaller — and again, and again. Each pass
+multiplies the detail; the SDF stays a dozen lines:</p>
+
+<pre><code>float menger(vec3 p) {
+    float d = sdBox(p, vec3(1.0));
+    float s = 1.0;
+    for (int m = 0; m &lt; ITER; m++) {
+        vec3 a = mod(p*s, 2.0) - 1.0;
+        s *= 3.0;
+        vec3 r = abs(1.0 - 3.0*abs(a));
+        float c = (min(min(max(r.x,r.y), max(r.y,r.z)), max(r.z,r.x)) - 1.0) / s;
+        d = max(d, c);               // subtract the cross at this scale
+    }
+    return d;
+}</code></pre>
+
+<p>Each iteration adds a finer level of holes. Three or four passes already looks impossibly intricate;
+the cost is just a few more loop turns per ray step.</p>
+
+<h2>Play — turn up the recursion</h2>
+
+<p><code>detail</code> sets how many carve passes run (0 = plain box, 5 = dense lace). <code>spin</code>
+rotates it so you can see the 3D structure. Watch detail explode for almost no cost — drag to orbit.</p>
+
+<div id="lab-fractal"></div>
+
+<h2>Now you — reveal the structure, graded live</h2>
+
+<p>A static sponge hides its depth in silhouette. Spin it so the holes move and the 3D form reads.
+<strong>Check</strong> verifies the image animates.</p>
+
+<div id="lab-build"></div>
+
+<div class="pitfall">
+  <span class="label">Watch for</span>
+  Iterated SDFs are only <em>approximate</em> distances (they slightly over-estimate), so rays can
+  overshoot thin features. If the surface looks eroded, lower the hit threshold or take a fraction of the
+  step (<code>t += d*0.8</code>). More iterations also cost more — there's a real budget here.
+</div>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" id="q1"
+  data-q="What makes a fractal SDF like the Menger sponge cheap to render?"
+  data-correct="1"
+  data-options='["The GPU caches the mesh after the first frame","The same small carve repeats at finer scales","The camera skips the interior empty cells now","The fog hides most of the expensive detail"]'
+  data-feedback="It is one short loop reused at shrinking scales — detail multiplies while the code (and memory) stays tiny."></div>
+
+<div class="quiz" id="q2"
+  data-q="Why can rays overshoot a fractal surface?"
+  data-correct="0"
+  data-options='["Iterated SDFs over-estimate the true distance now","The camera moves faster than the ray steps","The normal cannot be computed on a fractal","Fog removes the near surfaces before the hit"]'
+  data-feedback="The folded/iterated distance is an upper bound that can exceed the real one, so a full step may jump past thin detail."></div>
+
+<div class="source">
+  <span class="label">Primary source — read this next</span>
+  <a href="https://iquilezles.org/articles/menger/">IQ — Menger fractal</a> (the exact SDF above), and
+  <a href="https://iquilezles.org/articles/mandelbulb/">IQ — Mandelbulb</a> for the famous organic one.
+  See <a href="../RESOURCES.md">RESOURCES.md</a>.
+</div>
+
+<div class="ask">
+  <span class="label">Stuck or curious?</span> Ask me — e.g. <em>"how does the Mandelbulb differ?"</em>
+  or <em>"how do I color by iteration count for that classic fractal look?"</em> When ✓, next is
+  <strong>Lesson 11 — clouds: raymarching volume instead of surfaces.</strong>
+</div>
+
+<nav class="lesson-nav">
+  <span>← <a href="0009-domain-repetition.html">Lesson 09</a></span>
+  <span><a href="../index.html">Index</a> · Next: <a href="0011-volumetric-clouds.html">Lesson 11 — Volumetric clouds</a> →</span>
+</nav>
+
+</main>
+
+<script type="module" src="../assets/quiz.js"></script>
+<script type="module">
+import { createShaderLab } from '../assets/shader-lab.js';
+
+const MENGER =
+`float sdBox(vec3 p, vec3 b){ vec3 d=abs(p)-b; return length(max(d,0.0))+min(max(d.x,max(d.y,d.z)),0.0); }
+float menger(vec3 p, int iter){
+    float d = sdBox(p, vec3(1.0));
+    float s = 1.0;
+    for(int m=0; m<6; m++){
+        if(m>=iter) break;
+        vec3 a = mod(p*s, 2.0) - 1.0;
+        s *= 3.0;
+        vec3 r = abs(1.0 - 3.0*abs(a));
+        float c = (min(min(max(r.x,r.y), max(r.y,r.z)), max(r.z,r.x)) - 1.0)/s;
+        d = max(d, c);
+    }
+    return d;
+}
+mat3 rotY(float a){ float c=cos(a),s=sin(a); return mat3(c,0.,s, 0.,1.,0., -s,0.,c); }
+mat3 rotX(float a){ float c=cos(a),s=sin(a); return mat3(1.,0.,0., 0.,c,-s, 0.,s,c); }`;
+
+createShaderLab(document.getElementById('lab-fractal'), {
+  height: 400,
+  uniforms: [
+    { name: 'uIter', label: 'detail', min: 0, max: 5, step: 1, value: 3 },
+    { name: 'uSpin', label: 'spin',   min: 0.0, max: 1.0, value: 0.25 },
+  ],
+  source: MENGER + `
+vec3 palette(float t){ return 0.5+0.5*cos(6.28318*(t+vec3(0.0,0.33,0.67))); }
+float map(vec3 p){ p = rotX(iTime*uSpin*0.7) * rotY(iTime*uSpin) * p; return menger(p, int(uIter)); }
+float march(vec3 ro, vec3 rd){ float t=0.0; for(int i=0;i<140;i++){ float d=map(ro+rd*t); if(d<0.001) return t; if(t>20.0) break; t+=d*0.85; } return -1.0; }
+vec3 calcNormal(vec3 p){ vec2 e=vec2(1.0,-1.0)*0.5773*0.0008;
+    return normalize(e.xyy*map(p+e.xyy)+e.yyx*map(p+e.yyx)+e.yxy*map(p+e.yxy)+e.xxx*map(p+e.xxx)); }
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord){
+    vec2 uv=(fragCoord-0.5*iResolution.xy)/iResolution.y;
+    vec3 ro=vec3(0.0,0.0,3.4);
+    vec3 rd=normalize(vec3(uv,-1.6));
+    vec3 col=vec3(0.03,0.04,0.07);
+    float t=march(ro,rd);
+    if(t>0.0){ vec3 p=ro+rd*t; vec3 n=calcNormal(p);
+        float diff=max(dot(n,normalize(vec3(0.6,0.8,0.5))),0.0);
+        float ao = 1.0 - float(t)*0.0; // placeholder
+        vec3 base=palette(0.15 + t*0.08);
+        col = base*(0.18 + diff); }
+    col=pow(col,vec3(0.4545));
+    fragColor=vec4(col,1.0);
+}`,
+});
+
+createShaderLab(document.getElementById('lab-build'), {
+  editable: true, height: 380,
+  source: MENGER + `
+float map(vec3 p){
+    // C1: spin the fractal so its 3D structure reads — rotate p with time:
+    //   p = rotX(iTime*0.6) * rotY(iTime) * p;
+    return menger(p, 3);
+}
+float march(vec3 ro, vec3 rd){ float t=0.0; for(int i=0;i<140;i++){ float d=map(ro+rd*t); if(d<0.001) return t; if(t>20.0) break; t+=d*0.85; } return -1.0; }
+vec3 calcNormal(vec3 p){ vec2 e=vec2(1.0,-1.0)*0.5773*0.0008;
+    return normalize(e.xyy*map(p+e.xyy)+e.yyx*map(p+e.yyx)+e.yxy*map(p+e.yxy)+e.xxx*map(p+e.xxx)); }
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord){
+    vec2 uv=(fragCoord-0.5*iResolution.xy)/iResolution.y;
+    vec3 ro=vec3(0.0,0.0,3.4);
+    vec3 rd=normalize(vec3(uv,-1.6));
+    vec3 col=vec3(0.03,0.04,0.07);
+    float t=march(ro,rd);
+    if(t>0.0){ vec3 p=ro+rd*t; vec3 n=calcNormal(p);
+        float diff=max(dot(n,normalize(vec3(0.6,0.8,0.5))),0.0);
+        col=vec3(0.15)+diff*vec3(0.9,0.75,0.55); }
+    fragColor=vec4(col,1.0);
+}`,
+  challenges: [
+    { text: '<b>Spin it.</b> Rotate the domain over time, e.g. ' +
+            '<code>p = rotX(iTime*0.6) * rotY(iTime) * p;</code>. The holes should move as it turns.',
+      check: async S => {
+        for (const [u,v] of [[0.5,0.5],[0.45,0.55],[0.55,0.45],[0.5,0.6]])
+          if (await S.changedOverTime(u, v, 0)) return true;
+        return false; } },
+  ],
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lesson 02 — Shaping a glowing circle</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+
+<header class="masthead">
+  <p class="kicker">Raymarching for Creative Art · Lesson 02 · Foundations</p>
+  <h1>Shaping a glowing circle</h1>
+  <p class="standfirst">Last lesson you made a distance field — dark at a point, brighter outward.
+  Now you turn distance into <em>form</em>: a crisp, glowing circle. This is the move that scales
+  all the way up to a raymarched sphere.</p>
+</header>
+
+<main>
+
+<div class="goal">
+  <span class="label">Your win this lesson</span>
+  Define a shape as a <em>signed distance</em> (<code>length(uv) - r</code>) and paint it with a soft,
+  glowing edge using <code>smoothstep</code> and <code>mix</code>.
+</div>
+
+<h2>Center the coordinates first</h2>
+
+<p>For shapes we switch to the <strong>centered, aspect-correct</strong> UV — origin in the middle,
+divided by height so circles stay round (<a href="0001-every-pixel-runs-your-code.html">Lesson 01</a>
+ended on exactly this line):</p>
+
+<pre><code>vec2 uv = (fragCoord - 0.5*iResolution.xy) / iResolution.y;  // 0,0 = screen center</code></pre>
+
+<h2>Distance → shape</h2>
+
+<p>The distance from the center is <code>length(uv)</code>. Subtract a radius and you get the
+<strong>signed distance to a circle</strong>:</p>
+
+<pre><code>float d = length(uv) - r;   // d &lt; 0 inside, d = 0 on the edge, d &gt; 0 outside</code></pre>
+
+<p>That single sign tells you inside from outside. To <em>draw</em> it, you map <code>d</code> to a
+brightness. A hard cut is <code>step(0.0, -d)</code> (1 inside, 0 outside) — but it aliases into jaggies.
+The artist's tool is <strong>smoothstep</strong>, which fades smoothly across a thin band, giving a clean
+anti-aliased edge — or, widened, a glow:</p>
+
+<pre><code>float circle = 1.0 - smoothstep(0.0, aa, d);   // aa = edge softness</code></pre>
+
+<p>Then <strong>mix</strong> blends two colors by that 0→1 mask: <code>mix(background, fill, circle)</code>.</p>
+
+<div class="note">
+  <span class="label">Why this matters for raymarching</span>
+  <code>length(uv) - r</code> in 2D becomes <code>length(p) - r</code> in 3D — the exact SDF of the
+  sphere you'll raymarch in Lesson 04. <code>smoothstep</code> and <code>mix</code> stay your edge-and-color
+  tools the whole way up. You're learning the real vocabulary now, just in 2D.
+</div>
+
+<h2>Play — sculpt the glow</h2>
+
+<p>No code: drag the sliders. <code>radius</code> sizes it, <code>edge</code> softens the rim,
+<code>glow</code> adds a halo. This warm, glowing look is pure creative-art territory.</p>
+
+<div id="lab-glow"></div>
+
+<h2>Now you — build the circle, graded live</h2>
+
+<p>The starter shows nothing: <code>d = length(uv)</code> has no radius, so the shape is empty.
+Fix it, then tint it. Hit <strong>Check</strong> on each — it reads the pixels back and grades you.</p>
+
+<div id="lab-build"></div>
+
+<div class="pitfall">
+  <span class="label">Watch for</span>
+  <code>smoothstep(a, b, x)</code> needs <code>a</code> and <code>b</code> different, and goes 0→1 as
+  <code>x</code> moves from <code>a</code> to <code>b</code>. If your shape is inverted, you likely
+  swapped them or forgot the <code>1.0 -</code>.
+</div>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" id="q1"
+  data-q="What is true at a point where the signed distance d equals exactly zero?"
+  data-correct="2"
+  data-options='["The point sits deep inside the shape now","The point lies far outside the shape now","The point is exactly on the shape edge now","The point is at the screen center origin now"]'
+  data-feedback="d = 0 is the surface itself: negative inside, positive outside, zero on the boundary."></div>
+
+<div class="quiz" id="q2"
+  data-q="Why prefer smoothstep over step for a shape edge?"
+  data-correct="0"
+  data-options='["It fades the edge smoothly, avoiding jagged aliasing","It runs strictly faster on every modern GPU core","It changes the radius of the circle automatically now","It converts the distance field into a 3D surface"]'
+  data-feedback="smoothstep blends across a thin band → an anti-aliased (and tunable) edge instead of a hard, jagged cut."></div>
+
+<div class="source">
+  <span class="label">Primary source — read this next</span>
+  <a href="https://thebookofshaders.com/07/">The Book of Shaders — Ch. 7: Shapes</a>, plus
+  <a href="https://iquilezles.org/articles/distfunctions2d/">IQ — 2D distance functions</a> for the
+  full primitive catalogue. See <a href="../RESOURCES.md">RESOURCES.md</a>.
+</div>
+
+<div class="ask">
+  <span class="label">Stuck or curious?</span> Ask me anything — e.g. <em>"what does the second
+  smoothstep argument really control?"</em> or <em>"how do I make a ring instead of a disk?"</em>
+  When both challenges show ✓, say so and we'll do <strong>Lesson 03 — combining shapes with SDF
+  booleans</strong>, the last 2D step before we leap into 3D.
+</div>
+
+<nav class="lesson-nav">
+  <span>← <a href="0001-every-pixel-runs-your-code.html">Lesson 01</a></span>
+  <span><a href="../index.html">Index</a> · Next: <a href="0003-combining-shapes-sdf-booleans.html">Lesson 03 — SDF booleans</a> →</span>
+</nav>
+
+</main>
+
+<script type="module" src="../assets/quiz.js"></script>
+<script type="module">
+import { createShaderLab } from '../assets/shader-lab.js';
+
+createShaderLab(document.getElementById('lab-glow'), {
+  height: 300,
+  uniforms: [
+    { name: 'uR',    label: 'radius', min: 0.05, max: 0.45, value: 0.28 },
+    { name: 'uAA',   label: 'edge',   min: 0.002, max: 0.12, value: 0.01 },
+    { name: 'uGlow', label: 'glow',   min: 0.0,  max: 1.0,  value: 0.4 },
+  ],
+  source:
+`void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    vec2 uv = (fragCoord - 0.5*iResolution.xy) / iResolution.y;
+
+    float d = length(uv) - uR;                 // signed distance to the circle
+    float circle = 1.0 - smoothstep(0.0, uAA, d);
+
+    float glow = uGlow * 0.025 / max(d, 0.001); // bright halo outside the rim
+    glow = clamp(glow, 0.0, 1.0);
+
+    vec3 col = vec3(0.03, 0.04, 0.07);
+    col = mix(col, vec3(1.0, 0.65, 0.25), circle);   // warm fill
+    col += vec3(1.0, 0.5, 0.2) * glow;               // additive glow
+    fragColor = vec4(col, 1.0);
+}`,
+});
+
+createShaderLab(document.getElementById('lab-build'), {
+  editable: true, height: 300,
+  source:
+`void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    vec2 uv = (fragCoord - 0.5*iResolution.xy) / iResolution.y;
+
+    // C1: subtract a radius (~0.3) so this becomes a circle's distance
+    float d = length(uv);
+
+    float circle = 1.0 - smoothstep(0.0, 0.01, d);
+
+    // C2: change the fill from white to a warm orange-ish color
+    vec3 fill = vec3(1.0);
+
+    vec3 col = mix(vec3(0.04,0.05,0.08), fill, circle);
+    fragColor = vec4(col, 1.0);
+}`,
+  challenges: [
+    { text: '<b>Make the circle appear.</b> Give it radius ~0.3 with ' +
+            '<code>length(uv) - 0.3</code>.',
+      check: S => S.uv(0.5, 0.5)[0] > 0.5 && S.uv(0.5, 0.95)[0] < 0.3 },
+    { text: '<b>Tint it warm.</b> Set the fill to an orange-ish color (high red, low blue), ' +
+            'e.g. <code>vec3(1.0, 0.6, 0.2)</code>.',
+      check: S => { const c = S.uv(0.5, 0.5); return c[0] > 0.5 && c[2] < 0.45 && c[0] - c[2] > 0.2; } },
+  ],
+});
+</script>
+</body>
+</html>

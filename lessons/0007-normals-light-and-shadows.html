@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lesson 07 — Normals, light &amp; shadows</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+
+<header class="masthead">
+  <p class="kicker">Raymarching for Creative Art · Lesson 07 · The payoff</p>
+  <h1>Normals, light &amp; shadows</h1>
+  <p class="standfirst">A hit point is a silhouette. To make it <em>read as a lit object</em> you need the
+  surface normal — and with an SDF the normal comes for free. Add diffuse, a soft shadow, and a line of
+  fog, and you have a finished raymarched image.</p>
+</header>
+
+<main>
+
+<div class="goal">
+  <span class="label">Your win this lesson</span>
+  Compute SDF normals, light a surface with diffuse + ambient, and assemble a complete, good-looking
+  raymarched scene — the thing your whole mission was pointing at.
+</div>
+
+<h2>Normals from the SDF gradient</h2>
+
+<p>The gradient of the distance field points along the surface normal. You can't differentiate arbitrary
+code, so you approximate it by sampling <code>map</code> around the point — IQ's four-tap tetrahedron
+trick:</p>
+
+<pre><code>vec3 calcNormal(vec3 p) {
+    vec2 e = vec2(1.0, -1.0) * 0.5773 * 0.0005;
+    return normalize(
+        e.xyy * map(p + e.xyy) + e.yyx * map(p + e.yyx) +
+        e.yxy * map(p + e.yxy) + e.xxx * map(p + e.xxx));
+}</code></pre>
+
+<h2>Diffuse + ambient</h2>
+
+<p>Lambert's law: brightness is how directly the surface faces the light, <code>max(dot(n, L), 0.0)</code>.
+Add a small <strong>ambient</strong> term so the shadowed side isn't pure black — without it, scenes look
+like they're on the Moon:</p>
+
+<pre><code>float diff = max(dot(n, lightDir), 0.0);
+vec3 col = ambient * material + diff * material;</code></pre>
+
+<h2>Soft shadows &amp; fog — the cheap magic</h2>
+
+<p>March a second ray from the hit point toward the light; if it gets blocked, you're in shadow. IQ's
+soft-shadow keeps the closest approach for a free penumbra. One line of exponential <strong>fog</strong>
+then gives instant depth. A final <code>pow(col, 0.4545)</code> gamma pass makes it look right on screen.</p>
+
+<h2>Play — light the scene</h2>
+
+<p>The finished article: ground, a smin blob, soft shadows, fog, gamma. Drag <code>light x/y</code> to
+move the sun, <code>softness</code> to widen the penumbra. This is a complete piece you could post.</p>
+
+<div id="lab-final"></div>
+
+<h2>Now you — light it, graded live</h2>
+
+<p>A single sphere, currently flat gray. Light it: compute the normal and apply diffuse (Task 1), then
+add ambient so the dark side keeps some color (Task 2). <strong>Check</strong> grades each by comparing
+the lit top to the shadowed bottom.</p>
+
+<div id="lab-build"></div>
+
+<div class="pitfall">
+  <span class="label">Watch for</span>
+  Compute the normal only <em>at the hit point</em>, never inside the march loop. And nudge the shadow
+  ray off the surface (<code>p + n*0.02</code>) or it instantly shadows itself — "shadow acne."
+</div>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" id="q1"
+  data-q="How is the surface normal obtained from a signed distance field?"
+  data-correct="2"
+  data-options='["By averaging the colors of the four nearest pixels","By storing a normal vector inside every primitive","By sampling the gradient of map around the point","By normalizing the ray direction that scored the hit"]'
+  data-feedback="The SDF gradient points along the normal; sampling map at small offsets (tetrahedron taps) approximates it."></div>
+
+<div class="quiz" id="q2"
+  data-q="What is the role of the ambient term in the lighting?"
+  data-correct="0"
+  data-options='["Keeps the shadowed side from going fully black","Sharpens the edge between light and shadow","Adds the soft penumbra around cast shadows","Applies the gamma correction at the very end"]'
+  data-feedback="Ambient is a small base light so surfaces facing away from the sun still show some color."></div>
+
+<div class="source">
+  <span class="label">Primary source — read this next</span>
+  <a href="https://iquilezles.org/articles/normalsSDF/">IQ — Normals for SDFs</a>,
+  <a href="https://iquilezles.org/articles/rmshadows/">Soft shadows</a>,
+  <a href="https://iquilezles.org/articles/fog/">Better fog</a>. Together they are the whole lighting
+  toolkit. See <a href="../RESOURCES.md">RESOURCES.md</a>.
+</div>
+
+<div class="ask">
+  <span class="label">You made it to a full raymarched scene.</span> This is your mission's milestone.
+  Ask me where to go next — <em>specular highlights, cosine palettes for color, fractals, clouds,
+  domain repetition</em>, or <em>"help me polish a piece and post it to Shadertoy."</em> Tell me which
+  pulls you and I'll build the next lesson around it.
+</div>
+
+<nav class="lesson-nav">
+  <span>← <a href="0006-scene-composition.html">Lesson 06</a></span>
+  <span><a href="../index.html">Index</a> · 🎉 Next: <a href="0008-color-palettes-and-specular.html">Lesson 08 — Color &amp; palettes</a> →</span>
+</nav>
+
+</main>
+
+<script type="module" src="../assets/quiz.js"></script>
+<script type="module">
+import { createShaderLab } from '../assets/shader-lab.js';
+
+// ---- finished scene (sliders) ----
+createShaderLab(document.getElementById('lab-final'), {
+  height: 380,
+  uniforms: [
+    { name: 'uLx',   label: 'light x',  min: -1.5, max: 1.5, value: 0.8 },
+    { name: 'uLy',   label: 'light y',  min: 0.2,  max: 2.0, value: 1.2 },
+    { name: 'uSoft', label: 'softness', min: 2.0,  max: 32.0, value: 12.0 },
+  ],
+  source:
+`float smin(float a,float b,float k){ float h=clamp(0.5+0.5*(b-a)/k,0.0,1.0); return mix(b,a,h)-k*h*(1.0-h); }
+float map(vec3 p){
+    float ground = p.y + 1.0;
+    float blob = smin(length(p) - 0.9,
+                      length(max(abs(p-vec3(1.0,0.2,0.0))-vec3(0.45),0.0))-0.05, 0.35);
+    return min(ground, blob);
+}
+float march(vec3 ro, vec3 rd){ float t=0.0; for(int i=0;i<128;i++){ float d=map(ro+rd*t); if(d<0.001) return t; if(t>60.0) break; t+=d; } return -1.0; }
+vec3 calcNormal(vec3 p){ vec2 e=vec2(1.0,-1.0)*0.5773*0.0008;
+    return normalize(e.xyy*map(p+e.xyy)+e.yyx*map(p+e.yyx)+e.yxy*map(p+e.yxy)+e.xxx*map(p+e.xxx)); }
+float softShadow(vec3 ro, vec3 rd, float k){ float res=1.0,t=0.02;
+    for(int i=0;i<40;i++){ float h=map(ro+rd*t); if(h<0.001) return 0.0; res=min(res,k*h/t); t+=h; if(t>12.0) break; } return clamp(res,0.0,1.0); }
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord){
+    vec2 uv=(fragCoord-0.5*iResolution.xy)/iResolution.y;
+    vec3 ro=vec3(2.6,1.6,3.6);
+    vec3 ww=normalize(vec3(0.0,0.2,0.0)-ro), uu=normalize(cross(ww,vec3(0,1,0))), vv=cross(uu,ww);
+    vec3 rd=normalize(mat3(uu,vv,ww)*vec3(uv,1.6));
+    vec3 sky=vec3(0.62,0.72,0.85);
+    vec3 col=sky;
+    float t=march(ro,rd);
+    if(t>0.0){
+        vec3 p=ro+rd*t; vec3 n=calcNormal(p);
+        vec3 L=normalize(vec3(uLx,uLy,0.5));
+        float diff=max(dot(n,L),0.0);
+        float sha=softShadow(p+n*0.02,L,uSoft);
+        vec3 mat=vec3(1.0,0.72,0.34);
+        col=vec3(0.16,0.18,0.24)*mat + diff*sha*mat;
+        col=mix(col,sky,1.0-exp(-t*0.06));          // fog
+    }
+    col=pow(col,vec3(0.4545));                       // gamma
+    fragColor=vec4(col,1.0);
+}`,
+});
+
+// ---- graded build: light a single sphere ----
+createShaderLab(document.getElementById('lab-build'), {
+  editable: true, height: 360,
+  source:
+`float map(vec3 p){ return length(p) - 1.2; }     // one big sphere
+float march(vec3 ro, vec3 rd){ float t=0.0; for(int i=0;i<120;i++){ float d=map(ro+rd*t); if(d<0.001) return t; if(t>50.0) break; t+=d; } return -1.0; }
+vec3 calcNormal(vec3 p){ vec2 e=vec2(1.0,-1.0)*0.5773*0.0008;
+    return normalize(e.xyy*map(p+e.xyy)+e.yyx*map(p+e.yyx)+e.yxy*map(p+e.yxy)+e.xxx*map(p+e.xxx)); }
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord){
+    vec2 uv=(fragCoord-0.5*iResolution.xy)/iResolution.y;
+    vec3 ro=vec3(0.0,0.0,4.0);
+    vec3 rd=normalize(vec3(uv,-1.5));
+    float t=march(ro,rd);
+
+    vec3 col=vec3(0.05,0.06,0.10);          // sky
+    if(t>0.0){
+        vec3 p=ro+rd*t;
+        // light comes from above:
+        vec3 L=normalize(vec3(0.0,1.0,0.4));
+
+        // C1: compute the normal + diffuse, replace the flat gray:
+        //   vec3 n=calcNormal(p);
+        //   float diff=max(dot(n,L),0.0);
+        //   col = diff * vec3(1.0,0.8,0.5);
+        // C2: add an ambient term so the dark side keeps some color:
+        //   col = vec3(0.12) + diff * vec3(1.0,0.8,0.5);
+        col = vec3(0.5);                      // flat — fix me
+    }
+    fragColor=vec4(col,1.0);
+}`,
+  challenges: [
+    { text: '<b>Light it.</b> Compute <code>n = calcNormal(p)</code>, then ' +
+            '<code>diff = max(dot(n, L), 0.0)</code> and set <code>col = diff * vec3(1.0,0.8,0.5)</code>. ' +
+            'The top (facing the light) should be much brighter than the bottom.',
+      check: S => { const top=S.uv(0.5,0.63), bot=S.uv(0.5,0.37);
+                    return top[0] > 0.35 && (top[0]-bot[0]) > 0.18; } },
+    { text: '<b>Add ambient.</b> Give the shadowed side some base light: ' +
+            '<code>col = vec3(0.12) + diff * vec3(1.0,0.8,0.5)</code> — the bottom should no longer be black.',
+      check: S => { const top=S.uv(0.5,0.63), bot=S.uv(0.5,0.37);
+                    return bot[0] > 0.08 && (top[0]-bot[0]) > 0.12; } },
+  ],
+});
+</script>
+</body>
+</html>

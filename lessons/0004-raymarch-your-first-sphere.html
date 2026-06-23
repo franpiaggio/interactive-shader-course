@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lesson 04 — Raymarch your first sphere</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+
+<header class="masthead">
+  <p class="kicker">Raymarching for Creative Art · Lesson 04 · The leap to 3D</p>
+  <h1>Raymarch your first sphere</h1>
+  <p class="standfirst">This is the lesson the whole course points at. Same distance fields, one more
+  coordinate — plus a loop that walks a ray through space until it hits something. A real 3D object,
+  with no mesh anywhere.</p>
+</header>
+
+<main>
+
+<div class="goal">
+  <span class="label">Your win this lesson</span>
+  Render a 3D sphere by writing the <strong>sphere-tracing loop</strong> yourself — the single trick
+  behind every raymarched scene on Shadertoy.
+</div>
+
+<h2>The idea in one paragraph</h2>
+
+<p>For each pixel, shoot a <strong>ray</strong> from the camera through that pixel into the scene. Walk
+forward along the ray until you're touching a surface. Whatever you touch tells you the pixel's color.
+The scene is still just an SDF — now <code>map(vec3 p)</code> instead of <code>vec2</code>:</p>
+
+<pre><code>float map(vec3 p) { return length(p) - 1.0; }   // a unit sphere — your Lesson 02 circle, in 3D</code></pre>
+
+<h2>Sphere tracing — why the loop works</h2>
+
+<p>Here's the beautiful part. <code>map(p)</code> is the distance to the <em>nearest</em> surface. So
+from any point you can safely jump forward by exactly that distance without ever passing through a
+surface. Far away → big jumps (fast). Close to a surface → tiny jumps (precise). Step by the distance,
+every time:<sup>1</sup></p>
+
+<pre><code>float t = 0.0;                          // distance travelled along the ray
+for (int i = 0; i &lt; 100; i++) {
+    vec3 p = ro + rd * t;               // current point: origin + direction * distance
+    float d = map(p);                   // distance to nearest surface
+    if (d &lt; 0.001) { hit = true; break; } // close enough → hit
+    if (t &gt; 50.0) break;                // gone too far → miss (sky)
+    t += d;                             // THE step: advance by the safe distance
+}</code></pre>
+
+<p><code>ro</code> is the ray origin (camera). <code>rd</code> is the ray direction for this pixel —
+built from the <code>uv</code> you already know. That <code>t += d</code> line is the entire technique.</p>
+
+<h2>Play — feel the geometry</h2>
+
+<p>No code: <code>radius</code> resizes the sphere, <code>camera z</code> dollies the camera back and
+forth. Brighter = closer (shading by depth). Notice how a bigger sphere or a closer camera fills more
+of the frame — pure ray geometry.</p>
+
+<div id="lab-sphere"></div>
+
+<h2>Now you — complete the loop, graded live</h2>
+
+<p>The starter is missing <strong>one line</strong> — the safe step. Without it the ray never moves,
+so nothing is ever hit and you see only sky. Add it, then color the sphere. <strong>Check</strong>
+reads the pixels and grades you.</p>
+
+<div id="lab-build"></div>
+
+<div class="pitfall">
+  <span class="label">Watch for</span>
+  Loop counters are <code>int</code>; distances are <code>float</code>. Keep <code>i &lt; 100</code> an
+  int compare and don't mix types inside the loop. Also: too few iterations makes grazing rays miss the
+  surface (the silhouette frays) — 100 is plenty here.
+</div>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" id="q1"
+  data-q="In sphere tracing, how far is it safe to step the ray forward each iteration?"
+  data-correct="2"
+  data-options='["A tiny fixed amount chosen ahead of time now","The full remaining distance to the far plane","The distance map(p) to the nearest surface now","A random fraction of the ray length each step"]'
+  data-feedback="map(p) is the nearest-surface distance, so stepping by it can never overshoot — that is sphere tracing."></div>
+
+<div class="quiz" id="q2"
+  data-q="What does the loop conclude when t grows past the max distance?"
+  data-correct="1"
+  data-options='["The ray has definitely hit a nearby surface","The ray missed everything — color it as sky","The camera is positioned inside of a solid","The step size must be doubled and retried"]'
+  data-feedback="Passing the max distance with no hit means the ray escaped the scene: it is a miss, shaded as background/sky."></div>
+
+<div class="source">
+  <span class="label">Primary source — read this next</span>
+  <a href="https://iquilezles.org/articles/raymarchingdf/">IQ — Raymarching SDFs</a>: the canonical
+  article, the exact loop you just wrote, by the technique's main popularizer. ~20 min, then everything
+  on Shadertoy becomes readable. See <a href="../RESOURCES.md">RESOURCES.md</a>.
+</div>
+
+<div class="ask">
+  <span class="label">Stuck or curious?</span> Ask me — e.g. <em>"why divide rd by -1.5?"</em>,
+  <em>"how do I see where the expensive pixels are?"</em> (hint: color by iteration count), or
+  <em>"what happens if the hit threshold is too big?"</em> When both challenges are ✓, you've done the
+  hard part — next is <strong>Lesson 05 — a real camera you can orbit.</strong>
+</div>
+
+<p style="font-size:0.8rem;color:var(--ink-soft);margin-top:2rem">
+  <sup>1</sup> The name "sphere tracing": at each point, <code>map(p)</code> is the radius of the
+  largest empty sphere around you, so you can safely jump to its edge. Coined by John Hart, 1996.</p>
+
+<nav class="lesson-nav">
+  <span>← <a href="0003-combining-shapes-sdf-booleans.html">Lesson 03</a></span>
+  <span><a href="../index.html">Index</a> · Next: <a href="0005-camera-and-rays.html">Lesson 05 — Camera &amp; rays</a> →</span>
+</nav>
+
+</main>
+
+<script type="module" src="../assets/quiz.js"></script>
+<script type="module">
+import { createShaderLab } from '../assets/shader-lab.js';
+
+createShaderLab(document.getElementById('lab-sphere'), {
+  height: 340,
+  uniforms: [
+    { name: 'uR', label: 'radius',   min: 0.3, max: 2.0, value: 1.0 },
+    { name: 'uZ', label: 'camera z', min: 2.2, max: 8.0, value: 3.5 },
+  ],
+  source:
+`float map(vec3 p) { return length(p) - uR; }   // unit sphere of radius uR
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    vec2 uv = (fragCoord - 0.5*iResolution.xy) / iResolution.y;
+    vec3 ro = vec3(0.0, 0.0, uZ);            // camera, uZ units back
+    vec3 rd = normalize(vec3(uv, -1.5));     // ray through this pixel
+
+    float t = 0.0; bool hit = false;
+    for (int i = 0; i < 100; i++) {
+        float d = map(ro + rd * t);
+        if (d < 0.001) { hit = true; break; }
+        if (t > 50.0) break;
+        t += d;
+    }
+
+    float shade = 1.0 - (t - (uZ - uR)) * 0.6;          // brighter = closer
+    vec3 col = hit ? vec3(clamp(shade,0.0,1.0)) : vec3(0.05,0.06,0.10);
+    fragColor = vec4(col, 1.0);
+}`,
+});
+
+createShaderLab(document.getElementById('lab-build'), {
+  editable: true, height: 340,
+  source:
+`float map(vec3 p) { return length(p) - 1.0; }   // unit sphere
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    vec2 uv = (fragCoord - 0.5*iResolution.xy) / iResolution.y;
+    vec3 ro = vec3(0.0, 0.0, 3.0);
+    vec3 rd = normalize(vec3(uv, -1.5));
+
+    float t = 0.0; bool hit = false;
+    for (int i = 0; i < 100; i++) {
+        float d = map(ro + rd * t);
+        if (d < 0.001) { hit = true; break; }
+        if (t > 50.0) break;
+
+        // C1: take the safe step here  ->  t += d;
+    }
+
+    // C2: color the sphere — give the hit a warm color instead of white
+    vec3 col = hit ? vec3(1.0) : vec3(0.05, 0.06, 0.10);
+    fragColor = vec4(col, 1.0);
+}`,
+  challenges: [
+    { text: '<b>Complete the loop.</b> Add the safe step <code>t += d;</code> so the ray advances ' +
+            'and the sphere appears in the center.',
+      check: S => S.uv(0.5, 0.5)[0] > 0.4 && S.uv(0.04, 0.04)[0] < 0.2 },
+    { text: '<b>Color it.</b> Make the hit a warm color (high red, low blue), ' +
+            'e.g. <code>vec3(1.0, 0.6, 0.25)</code>.',
+      check: S => { const c = S.uv(0.5, 0.5); return c[0] > 0.5 && c[0] - c[2] > 0.2; } },
+  ],
+});
+</script>
+</body>
+</html>

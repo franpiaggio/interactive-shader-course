@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lesson 09 — Domain repetition</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+
+<header class="masthead">
+  <p class="kicker">Raymarching for Creative Art · Lesson 09 · Infinite worlds</p>
+  <h1>Domain repetition</h1>
+  <p class="standfirst">This is the trick that makes raymarching feel like magic: tile a single shape
+  across <em>infinite</em> space with one line of arithmetic on the point — no extra cost, no extra geometry.</p>
+</header>
+
+<main>
+
+<div class="goal">
+  <span class="label">Your win this lesson</span>
+  Turn one primitive into an endless lattice by folding the domain with <code>mod</code> — and color
+  each repeated cell independently using its grid id.
+</div>
+
+<h2>Fold space, not shapes</h2>
+
+<p>You don't copy the shape. You <em>fold the coordinate</em> before evaluating the SDF: wrap <code>p</code>
+into a single repeating cell, so every cell looks identical to the one at the origin:</p>
+
+<pre><code>vec3 q = mod(p + 0.5*s, s) - 0.5*s;   // wrap p into a cell of size s, centered
+return sdSphere(q, r);                  // one sphere → an infinite grid of spheres</code></pre>
+
+<p>The whole 3D space now tiles with copies, spaced <code>s</code> apart, for the price of one
+<code>mod</code>. Repeat on only some axes (<code>p.xz</code>) for an infinite floor of objects; all
+three for a crystal.</p>
+
+<div class="note">
+  <span class="label">Per-cell variation</span>
+  The <em>cell id</em> <code>round(p/s)</code> is constant within a cell — feed it to a hash and a palette
+  and every copy gets its own color or height, so the lattice looks designed, not stamped.
+</div>
+
+<h2>Play — an endless lattice</h2>
+
+<p><code>spacing</code> packs the cells tighter or looser; <code>radius</code> sizes each shape. Each cell
+is tinted by its id, so you're flying through a colored crystal. Drag to orbit.</p>
+
+<div id="lab-lattice"></div>
+
+<h2>Now you — tile it, graded live</h2>
+
+<p>One lonely sphere. Fold the domain so it tiles across the whole frame. <strong>Check</strong> counts
+how much of the screen is now covered by repeated copies.</p>
+
+<div id="lab-build"></div>
+
+<div class="pitfall">
+  <span class="label">Watch for</span>
+  Plain <code>mod</code> repetition assumes the shape fits inside its cell — if <code>r</code> approaches
+  <code>s/2</code>, neighbors touch and the SDF stops being exact near the seams. Keep shapes comfortably
+  smaller than the spacing, or use IQ's <em>limited</em> repetition for a finite count.
+</div>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" id="q1"
+  data-q="In domain repetition, what actually gets repeated?"
+  data-correct="2"
+  data-options='["The shape mesh is duplicated across the grid","The camera ray is fired once per copy now","The point p is folded into one repeating cell","The color palette is tiled across the screen"]'
+  data-feedback="You transform the input point with mod so every cell maps onto the origin cell — the shape is evaluated once, conceptually everywhere."></div>
+
+<div class="quiz" id="q2"
+  data-q="Why must the shape stay smaller than the cell spacing s?"
+  data-correct="0"
+  data-options='["So neighboring copies do not overlap and break distances","So the camera can fit between the copies","So the palette has enough hues to assign","So the fog has room to fade the copies"]'
+  data-feedback="If a copy spills past s/2 it intrudes on the neighbor cell, and the folded distance is no longer the true nearest-surface distance."></div>
+
+<div class="source">
+  <span class="label">Primary source — read this next</span>
+  <a href="https://iquilezles.org/articles/sdfrepetition/">IQ — SDF domain repetition</a>: covers both
+  infinite and the trickier <em>limited</em> repetition correctly. See <a href="../RESOURCES.md">RESOURCES.md</a>.
+</div>
+
+<div class="ask">
+  <span class="label">Stuck or curious?</span> Ask me — e.g. <em>"how do I repeat only N times, not
+  infinitely?"</em> or <em>"how do I vary each cell's height?"</em> When ✓, next is
+  <strong>Lesson 10 — fractals: infinite detail from a tiny formula.</strong>
+</div>
+
+<nav class="lesson-nav">
+  <span>← <a href="0008-color-palettes-and-specular.html">Lesson 08</a></span>
+  <span><a href="../index.html">Index</a> · Next: <a href="0010-fractals-menger-sponge.html">Lesson 10 — Fractals</a> →</span>
+</nav>
+
+</main>
+
+<script type="module" src="../assets/quiz.js"></script>
+<script type="module">
+import { createShaderLab } from '../assets/shader-lab.js';
+
+createShaderLab(document.getElementById('lab-lattice'), {
+  height: 380,
+  uniforms: [
+    { name: 'uS', label: 'spacing', min: 1.4, max: 4.0, value: 2.2 },
+    { name: 'uR', label: 'radius',  min: 0.3, max: 1.0, value: 0.6 },
+  ],
+  source:
+`vec3 palette(float t){ return 0.5 + 0.5*cos(6.28318*(t + vec3(0.0,0.33,0.67))); }
+float hash(vec3 p){ p=fract(p*0.3183099+0.1); p*=17.0; return fract(p.x*p.y*p.z*(p.x+p.y+p.z)); }
+float gMap(vec3 p, out vec3 id){
+    id = round(p/uS);
+    vec3 q = p - uS*id;             // fold into the cell
+    return length(q) - uR;
+}
+float map(vec3 p){ vec3 id; return gMap(p, id); }
+float march(vec3 ro, vec3 rd){ float t=0.0; for(int i=0;i<120;i++){ float d=map(ro+rd*t); if(d<0.001) return t; if(t>40.0) break; t+=d; } return -1.0; }
+vec3 calcNormal(vec3 p){ vec2 e=vec2(1.0,-1.0)*0.5773*0.001;
+    return normalize(e.xyy*map(p+e.xyy)+e.yyx*map(p+e.yyx)+e.yxy*map(p+e.yxy)+e.xxx*map(p+e.xxx)); }
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord){
+    vec2 uv=(fragCoord-0.5*iResolution.xy)/iResolution.y;
+    float ang = iMouse.z>0.0 ? (iMouse.x/iResolution.x)*6.28 : iTime*0.25;
+    vec3 ro=vec3(3.0*sin(ang), 2.0, 3.0*cos(ang));
+    vec3 ww=normalize(-ro), uu=normalize(cross(ww,vec3(0,1,0))), vv=cross(uu,ww);
+    vec3 rd=normalize(mat3(uu,vv,ww)*vec3(uv,1.5));
+    vec3 sky=vec3(0.04,0.05,0.09);
+    vec3 col=sky;
+    float t=march(ro,rd);
+    if(t>0.0){
+        vec3 p=ro+rd*t; vec3 id; gMap(p,id); vec3 n=calcNormal(p);
+        float diff=max(dot(n,normalize(vec3(0.7,0.8,0.5))),0.0);
+        vec3 base=palette(hash(id));
+        col=base*(0.2+diff);
+        col=mix(col,sky,1.0-exp(-t*0.06));
+    }
+    col=pow(col,vec3(0.4545));
+    fragColor=vec4(col,1.0);
+}`,
+});
+
+createShaderLab(document.getElementById('lab-build'), {
+  editable: true, height: 360,
+  source:
+`float map(vec3 p){
+    // C1: fold space into 1.6-sized cells so the sphere tiles infinitely:
+    //   p.xy = mod(p.xy + 0.8, 1.6) - 0.8;
+    return length(p) - 0.78;
+}
+float march(vec3 ro, vec3 rd){ float t=0.0; for(int i=0;i<120;i++){ float d=map(ro+rd*t); if(d<0.001) return t; if(t>50.0) break; t+=d; } return -1.0; }
+vec3 calcNormal(vec3 p){ vec2 e=vec2(1.0,-1.0)*0.5773*0.001;
+    return normalize(e.xyy*map(p+e.xyy)+e.yyx*map(p+e.yyx)+e.yxy*map(p+e.yxy)+e.xxx*map(p+e.xxx)); }
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord){
+    vec2 uv=(fragCoord-0.5*iResolution.xy)/iResolution.y;
+    vec3 ro=vec3(0.0,0.0,5.0);
+    vec3 rd=normalize(vec3(uv,-1.5));
+    float t=march(ro,rd);
+    vec3 col=vec3(0.05,0.06,0.10);
+    if(t>0.0){ vec3 p=ro+rd*t; vec3 n=calcNormal(p);
+        float diff=max(dot(n,normalize(vec3(0.6,0.7,0.6))),0.0);
+        col=vec3(0.15)+diff*vec3(0.9,0.7,0.5); }
+    fragColor=vec4(col,1.0);
+}`,
+  challenges: [
+    { text: '<b>Tile it.</b> Fold the domain before the sphere: ' +
+            '<code>p.xy = mod(p.xy + 0.8, 1.6) - 0.8;</code>. Copies should fill the whole frame, ' +
+            'including the edges.',
+      check: S => { let lit = 0;
+        for (const [u,v] of [[0.12,0.5],[0.88,0.5],[0.5,0.12],[0.5,0.88],[0.16,0.16],[0.84,0.84]])
+          if (S.uv(u,v)[0] > 0.2) lit++;
+        return lit >= 3; } },
+  ],
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lesson 06 — Composing a scene</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+
+<header class="masthead">
+  <p class="kicker">Raymarching for Creative Art · Lesson 06 · Building scenes</p>
+  <h1>Composing a scene</h1>
+  <p class="standfirst">A scene is one function — <code>map(vec3 p)</code> — that returns the distance to
+  the nearest surface. Build it from 3D primitives, transforms, and the boolean operators you already
+  know from 2D. They transfer with zero changes.</p>
+</header>
+
+<main>
+
+<div class="goal">
+  <span class="label">Your win this lesson</span>
+  Write a <code>map()</code> that combines several primitives — a ground plane, a spinning box, a
+  smin-merged blob — into one composed scene.
+</div>
+
+<h2>3D primitives — same as 2D, plus one axis</h2>
+
+<pre><code>float sdSphere(vec3 p, float r) { return length(p) - r; }
+float sdBox(vec3 p, vec3 b)     { vec3 d = abs(p) - b;
+    return length(max(d,0.0)) + min(max(d.x,max(d.y,d.z)),0.0); }
+float sdTorus(vec3 p, vec2 t)   { vec2 q = vec2(length(p.xz)-t.x, p.y); return length(q)-t.y; }
+float sdPlane(vec3 p, float y)  { return p.y - y; }   // ground: union with min to add a floor</code></pre>
+
+<p>The booleans (<code>min</code>, <code>max</code>, <code>smin</code>) and transforms work exactly as
+in <a href="0003-combining-shapes-sdf-booleans.html">Lesson 03</a> — only <code>p</code> is a
+<code>vec3</code> now. To move a shape, subtract a position; to rotate, multiply <code>p</code> by a
+rotation matrix <em>before</em> the SDF call:</p>
+
+<pre><code>mat3 rotY(float a){ float c=cos(a),s=sin(a); return mat3(c,0,s, 0,1,0, -s,0,c); }
+// ... sdBox(rotY(iTime) * p, vec3(0.5))   spins the box around the vertical axis</code></pre>
+
+<h2>The map() convention</h2>
+
+<pre><code>float map(vec3 p) {
+    float ground = sdPlane(p, -1.0);
+    float blob   = smin(sdSphere(p, 0.8), sdBox(p - vec3(1.0,0,0), vec3(0.4)), 0.3);
+    return min(ground, blob);     // floor unioned with the merged blob
+}</code></pre>
+
+<h2>Play — compose with sliders</h2>
+
+<p>Ground + sphere + box + torus, all in one <code>map()</code>. <code>blend</code> melts the sphere
+and box together; <code>box x</code> slides the box through the sphere; <code>spin</code> rotates the
+whole group. This is scene-building as a live instrument.</p>
+
+<div id="lab-scene"></div>
+
+<h2>Now you — build the map(), graded live</h2>
+
+<p>Two tasks: spin the box, and give the scene a floor. <strong>Check</strong> grades each.</p>
+
+<div id="lab-build"></div>
+
+<div class="pitfall">
+  <span class="label">Watch for</span>
+  Transform order: <code>sdBox(rotY(a) * (p - pos), b)</code> rotates <em>then</em> the subtraction
+  placed it — apply the translation (<code>p - pos</code>) and rotation in the order you actually want,
+  or the shape orbits instead of spinning in place.
+</div>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" id="q1"
+  data-q="How do you add a flat ground floor to an existing scene SDF?"
+  data-correct="0"
+  data-options='["Union a plane SDF into it with the min operator","Subtract the plane SDF using the max operator","Multiply the scene distance by the plane height","Intersect the plane with max of both distances"]'
+  data-feedback="A floor is just another surface: union it in with min(scene, sdPlane(...))."></div>
+
+<div class="quiz" id="q2"
+  data-q="To spin a shape in place, where do you apply the rotation matrix?"
+  data-correct="1"
+  data-options='["To the final distance value the SDF returns","To the point p, before passing it to the SDF","To the camera ray direction inside the loop","To the color chosen after the surface is hit"]'
+  data-feedback="Transform the domain: rotate p before evaluating the SDF. Transforming the output distance is meaningless."></div>
+
+<div class="source">
+  <span class="label">Primary source — read this next</span>
+  <a href="https://iquilezles.org/articles/distfunctions/">IQ — 3D distance functions</a>: the full
+  catalogue of 30+ primitives and operators. Bookmark it; don't memorize it. See
+  <a href="../RESOURCES.md">RESOURCES.md</a> and the <a href="../reference/shader-quickref.html">quick reference</a>.
+</div>
+
+<div class="ask">
+  <span class="label">Stuck or curious?</span> Ask me — e.g. <em>"how do I repeat a shape infinitely?"</em>
+  (domain repetition is one <code>mod</code> line) or <em>"how do I give objects different materials?"</em>
+  When both are ✓, we finish strong: <strong>Lesson 07 — normals, light, and soft shadows</strong>,
+  where the scene finally looks lit.
+</div>
+
+<nav class="lesson-nav">
+  <span>← <a href="0005-camera-and-rays.html">Lesson 05</a></span>
+  <span><a href="../index.html">Index</a> · Next: <a href="0007-normals-light-and-shadows.html">Lesson 07 — Normals &amp; light</a> →</span>
+</nav>
+
+</main>
+
+<script type="module" src="../assets/quiz.js"></script>
+<script type="module">
+import { createShaderLab } from '../assets/shader-lab.js';
+
+const PRIM =
+`float sdSphere(vec3 p, float r){ return length(p) - r; }
+float sdBox(vec3 p, vec3 b){ vec3 d = abs(p)-b; return length(max(d,0.0)) + min(max(d.x,max(d.y,d.z)),0.0); }
+float sdTorus(vec3 p, vec2 t){ vec2 q = vec2(length(p.xz)-t.x, p.y); return length(q)-t.y; }
+float sdPlane(vec3 p, float y){ return p.y - y; }
+float smin(float a, float b, float k){ float h=clamp(0.5+0.5*(b-a)/k,0.0,1.0); return mix(b,a,h)-k*h*(1.0-h); }
+mat3 rotY(float a){ float c=cos(a),s=sin(a); return mat3(c,0.0,s, 0.0,1.0,0.0, -s,0.0,c); }
+float march(vec3 ro, vec3 rd){ float t=0.0; for(int i=0;i<120;i++){ float d=map(ro+rd*t); if(d<0.001) return t; if(t>60.0) break; t+=d; } return -1.0; }`;
+
+// slider scene — declares map() that reads the custom uniforms
+createShaderLab(document.getElementById('lab-scene'), {
+  height: 360,
+  uniforms: [
+    { name: 'uK',    label: 'blend',  min: 0.0, max: 0.6, value: 0.3 },
+    { name: 'uBoxX', label: 'box x',  min: -1.5, max: 1.5, value: 0.9 },
+    { name: 'uSpin', label: 'spin',   min: 0.0, max: 1.5, value: 0.3 },
+  ],
+  source:
+`float sdSphere(vec3 p, float r){ return length(p) - r; }
+float sdBox(vec3 p, vec3 b){ vec3 d = abs(p)-b; return length(max(d,0.0)) + min(max(d.x,max(d.y,d.z)),0.0); }
+float sdTorus(vec3 p, vec2 t){ vec2 q = vec2(length(p.xz)-t.x, p.y); return length(q)-t.y; }
+float sdPlane(vec3 p, float y){ return p.y - y; }
+float smin(float a, float b, float k){ float h=clamp(0.5+0.5*(b-a)/k,0.0,1.0); return mix(b,a,h)-k*h*(1.0-h); }
+mat3 rotY(float a){ float c=cos(a),s=sin(a); return mat3(c,0.0,s, 0.0,1.0,0.0, -s,0.0,c); }
+
+float map(vec3 q){
+    vec3 p = rotY(iTime * uSpin) * q;
+    float ground = sdPlane(q, -1.0);
+    float blob   = smin(sdSphere(p, 0.8), sdBox(p - vec3(uBoxX,0.0,0.0), vec3(0.45)), uK);
+    float ring   = sdTorus(p - vec3(0.0,1.1,0.0), vec2(0.7, 0.12));
+    return min(ground, min(blob, ring));
+}
+float march(vec3 ro, vec3 rd){ float t=0.0; for(int i=0;i<120;i++){ float d=map(ro+rd*t); if(d<0.001) return t; if(t>60.0) break; t+=d; } return -1.0; }
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord){
+    vec2 uv = (fragCoord - 0.5*iResolution.xy)/iResolution.y;
+    vec3 ro = vec3(0.0, 0.8, 4.5);
+    vec3 rd = normalize(vec3(uv, -1.5));
+    float t = march(ro, rd);
+    vec3 col = vec3(0.05,0.06,0.10);
+    if (t > 0.0){ vec3 p = ro + rd*t; col = (0.5+0.5*cos(p.y*2.0+vec3(0.0,1.0,2.0))) * clamp(1.3-t*0.18,0.25,1.0); }
+    fragColor = vec4(col, 1.0);
+}`,
+});
+
+// build lab — straight camera, depth shading, two graded tasks
+const BUILD_TAIL = `
+void mainImage(out vec4 fragColor, in vec2 fragCoord){
+    vec2 uv = (fragCoord - 0.5*iResolution.xy)/iResolution.y;
+    vec3 ro = vec3(0.0, 0.0, 4.5);
+    vec3 rd = normalize(vec3(uv, -1.5));
+    float t = march(ro, rd);
+    vec3 col = vec3(0.05,0.06,0.10);
+    if (t > 0.0) col = vec3(clamp(1.4 - t*0.28, 0.3, 1.0));   // brighter = closer
+    fragColor = vec4(col, 1.0);
+}`;
+
+createShaderLab(document.getElementById('lab-build'), {
+  editable: true, height: 340,
+  source:
+`float sdBox(vec3 p, vec3 b){ vec3 d = abs(p)-b; return length(max(d,0.0)) + min(max(d.x,max(d.y,d.z)),0.0); }
+float sdPlane(vec3 p, float y){ return p.y - y; }
+mat3 rotY(float a){ float c=cos(a),s=sin(a); return mat3(c,0.0,s, 0.0,1.0,0.0, -s,0.0,c); }
+
+float map(vec3 p){
+    // C1: spin the box — pass (rotY(iTime) * p) to sdBox instead of p
+    float box = sdBox(p, vec3(0.9));
+
+    // C2: add a ground floor — union a plane in:  return min(box, sdPlane(p, -1.2));
+    return box;
+}
+float march(vec3 ro, vec3 rd){ float t=0.0; for(int i=0;i<120;i++){ float d=map(ro+rd*t); if(d<0.001) return t; if(t>60.0) break; t+=d; } return -1.0; }
+` + BUILD_TAIL,
+  challenges: [
+    { text: '<b>Spin the box.</b> Rotate the domain: <code>sdBox(rotY(iTime) * p, vec3(0.9))</code>. ' +
+            'The center should now shift in brightness as it turns.',
+      check: async S => {
+        for (const [u,v] of [[0.5,0.5],[0.45,0.55],[0.56,0.46]])
+          if (await S.changedOverTime(u, v, 0)) return true;
+        return false; } },
+    { text: '<b>Add a floor.</b> Union a ground plane: <code>return min(box, sdPlane(p, -1.2));</code> ' +
+            'The bottom of the frame should fill with surface.',
+      check: S => S.uv(0.5, 0.05)[0] > 0.2 && S.uv(0.25, 0.05)[0] > 0.2 },
+  ],
+});
+</script>
+</body>
+</html>

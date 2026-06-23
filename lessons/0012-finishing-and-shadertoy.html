@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lesson 12 — Finishing &amp; shipping to Shadertoy</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+<style>
+  .checklist { list-style:none; padding-left:0; max-width:var(--measure); }
+  .checklist li { margin:0.5rem 0; }
+  .checklist label { cursor:pointer; }
+  .checklist input { margin-right:0.6rem; transform:scale(1.2); accent-color:var(--ok); }
+  .steps { counter-reset: step; list-style:none; padding-left:0; }
+  .steps li { counter-increment: step; margin:0.7rem 0; padding-left:2.4rem; position:relative; }
+  .steps li::before { content: counter(step); position:absolute; left:0; top:-0.1rem;
+    width:1.7rem; height:1.7rem; border-radius:50%; background:var(--accent); color:#fff;
+    font:700 0.85rem/1.7rem ui-monospace,monospace; text-align:center; }
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <p class="kicker">Raymarching for Creative Art · Lesson 12 · Ship it</p>
+  <h1>Finishing &amp; shipping to Shadertoy</h1>
+  <p class="standfirst">You have every technique. This lesson is about the last 10% that separates a demo
+  from a <em>piece</em> — materials, polish, and the small ritual of publishing it where people will see it.</p>
+</header>
+
+<main>
+
+<div class="goal">
+  <span class="label">Your win this lesson</span>
+  Take a complete scene, give it materials and finishing polish, make it yours, and publish it to
+  Shadertoy — your mission's destination.
+</div>
+
+<h2>Materials: make <code>map</code> return an id</h2>
+
+<p>To shade objects differently, return a material id alongside the distance — a <code>vec2</code> of
+<code>(distance, id)</code> — and switch on it when shading:</p>
+
+<pre><code>vec2 map(vec3 p) {
+    vec2 res = vec2(p.y + 1.0, 0.0);              // ground = id 0
+    float blob = length(p) - 0.9;
+    if (blob &lt; res.x) res = vec2(blob, 1.0);      // blob = id 1
+    return res;
+}
+// ... later: vec3 base = (id == 0.0) ? floorColor : blobColor;</code></pre>
+
+<h2>The finishing polish</h2>
+
+<ul>
+  <li><strong>Gamma</strong> — always end with <code>pow(col, vec3(0.4545))</code>. Non-negotiable.</li>
+  <li><strong>Fog</strong> — <code>mix(col, sky, 1.0-exp(-t*k))</code> for depth and to hide the far clip.</li>
+  <li><strong>Vignette</strong> — darken the corners a touch; the eye goes to the center.</li>
+  <li><strong>Tone &amp; contrast</strong> — a little <code>col = col*col*(3.0-2.0*col)</code> (smoothstep) deepens it.</li>
+  <li><strong>Antialiasing</strong> — if you can afford it, average 2×2 sub-pixel rays. Optional; costly.</li>
+</ul>
+
+<h2>Your capstone — make it yours, graded live</h2>
+
+<p>A complete scene: ground, a smin blob, cosine palette, specular, soft shadow, fog, vignette, gamma —
+everything from the course, and <strong>no custom uniforms, so it pastes straight into Shadertoy</strong>.
+It's static. Your task: bring it to life by orbiting the camera with <code>iTime</code>. Then make it
+yours — change the palette, the light, the shapes. <strong>Check</strong> confirms it animates.</p>
+
+<div id="lab-capstone"></div>
+
+<h2>Publish it to Shadertoy</h2>
+
+<ol class="steps">
+  <li>Open <a href="https://www.shadertoy.com/new">shadertoy.com/new</a> (sign in to save/publish).</li>
+  <li>Select all the code in the editor above and paste it over the default <code>mainImage</code>.
+    The <code>iTime</code>, <code>iResolution</code>, and <code>iMouse</code> uniforms are already there.</li>
+  <li><strong>Bake any slider values into constants.</strong> The lab "Play" scenes use custom uniforms
+    (<code>uCov</code>, <code>uShin</code>…) that Shadertoy doesn't have — replace each with the number
+    you liked, e.g. <code>float uShin = 24.0;</code>. (This capstone already has none.)</li>
+  <li>Hit the ▶ (or <code>Alt+Enter</code>) to compile. Fix any red errors in the log at the bottom.</li>
+  <li>Give it a name and description, set a license, choose <em>Public</em> or <em>Unlisted</em>, and
+    <strong>Publish</strong>. Share the link.</li>
+</ol>
+
+<div class="note">
+  <span class="label">Posting is how you get wisdom</span>
+  Publishing isn't just sharing — it's the fastest feedback loop. People fork, comment, and you learn by
+  reading how others solved the same thing. See the communities in <a href="../RESOURCES.md">RESOURCES.md</a>.
+  Want feedback before posting? Show me your shader and I'll review it.
+</div>
+
+<h2>Ship checklist</h2>
+
+<ul class="checklist">
+  <li><label><input type="checkbox"> Ends with a gamma pass (<code>pow(col, 0.4545)</code>)</label></li>
+  <li><label><input type="checkbox"> Has fog or a background so the far clip isn't a hard edge</label></li>
+  <li><label><input type="checkbox"> Runs at a smooth framerate (iteration budget is sane)</label></li>
+  <li><label><input type="checkbox"> No custom uniforms left — slider values baked into constants</label></li>
+  <li><label><input type="checkbox"> Compiles clean on Shadertoy (no red in the log)</label></li>
+  <li><label><input type="checkbox"> Has a title, and it's something you'd put your name on</label></li>
+</ul>
+
+<div class="source">
+  <span class="label">Primary source</span>
+  <a href="https://www.shadertoy.com/howto">Shadertoy — How To</a> for the editor, channels, and
+  publishing, plus <a href="https://iquilezles.org/articles/outdoorslighting/">IQ — Outdoor lighting</a>
+  for the art-direction polish. See <a href="../RESOURCES.md">RESOURCES.md</a>.
+</div>
+
+<div class="ask">
+  <span class="label">You finished the course. 🎉</span>
+  You can now build, light, color, and ship a raymarched scene from a blank editor — the whole mission.
+  Ask me where to go deeper: <em>reflections &amp; refraction, signed-distance text, terrain &amp;
+  landscapes, audio-reactive shaders, optimization</em> — or paste a piece and I'll help you polish it.
+</div>
+
+<nav class="lesson-nav">
+  <span>← <a href="0011-volumetric-clouds.html">Lesson 11</a></span>
+  <span><a href="../index.html">Index</a> · Next: <a href="0013-fun-experiments-and-ship.html">Lesson 13 — Fun experiments</a> →</span>
+</nav>
+
+</main>
+
+<script type="module" src="../assets/quiz.js"></script>
+<script type="module">
+import { createShaderLab } from '../assets/shader-lab.js';
+
+createShaderLab(document.getElementById('lab-capstone'), {
+  editable: true, height: 420,
+  source:
+`// ===== A complete, Shadertoy-ready raymarched scene. Make it yours. =====
+vec3 palette(float t){ return 0.5 + 0.5*cos(6.28318*(t + vec3(0.0,0.33,0.67))); }
+float smin(float a,float b,float k){ float h=clamp(0.5+0.5*(b-a)/k,0.0,1.0); return mix(b,a,h)-k*h*(1.0-h); }
+
+float map(vec3 p){
+    float ground = p.y + 1.0;
+    float blob = smin(length(p) - 0.9,
+                      length(max(abs(p-vec3(1.1,0.1,0.2))-vec3(0.4),0.0)) - 0.06, 0.4);
+    return min(ground, blob);
+}
+float march(vec3 ro, vec3 rd){ float t=0.0; for(int i=0;i<140;i++){ float d=map(ro+rd*t); if(d<0.001) return t; if(t>60.0) break; t+=d; } return -1.0; }
+vec3 calcNormal(vec3 p){ vec2 e=vec2(1.0,-1.0)*0.5773*0.0008;
+    return normalize(e.xyy*map(p+e.xyy)+e.yyx*map(p+e.yyx)+e.yxy*map(p+e.yxy)+e.xxx*map(p+e.xxx)); }
+float softShadow(vec3 ro, vec3 rd){ float res=1.0,t=0.02; for(int i=0;i<40;i++){ float h=map(ro+rd*t); if(h<0.001) return 0.0; res=min(res,12.0*h/t); t+=h; if(t>12.0) break; } return clamp(res,0.0,1.0); }
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord){
+    vec2 uv=(fragCoord-0.5*iResolution.xy)/iResolution.y;
+
+    // C1: orbit the camera with iTime, e.g.
+    //   vec3 ro = vec3(3.6*sin(iTime*0.3), 1.6, 3.6*cos(iTime*0.3));
+    vec3 ro = vec3(2.6, 1.6, 3.6);
+
+    vec3 ww=normalize(vec3(0.0,0.0,0.0)-ro), uu=normalize(cross(ww,vec3(0,1,0))), vv=cross(uu,ww);
+    vec3 rd=normalize(mat3(uu,vv,ww)*vec3(uv,1.6));
+
+    vec3 sky=vec3(0.55,0.65,0.82);
+    vec3 col=sky;
+    float t=march(ro,rd);
+    if(t>0.0){
+        vec3 p=ro+rd*t; vec3 n=calcNormal(p);
+        vec3 L=normalize(vec3(0.8,0.9,0.5));
+        float diff=max(dot(n,L),0.0);
+        float sha=softShadow(p+n*0.02, L);
+        vec3 h=normalize(L-rd);
+        float spec=pow(max(dot(n,h),0.0), 32.0);
+        vec3 base=palette(0.1 + p.y*0.25);                 // ← change me for a new mood
+        col = base*(0.18 + diff*sha) + spec*sha*vec3(1.0);
+        col = mix(col, sky, 1.0-exp(-t*0.05));             // fog
+    }
+    vec2 q=fragCoord/iResolution.xy;
+    col *= 0.4 + 0.6*pow(16.0*q.x*q.y*(1.0-q.x)*(1.0-q.y), 0.25);  // vignette
+    col = pow(col, vec3(0.4545));                          // gamma
+    fragColor=vec4(col,1.0);
+}`,
+  challenges: [
+    { text: '<b>Bring it to life.</b> Orbit the camera with time, e.g. ' +
+            '<code>vec3 ro = vec3(3.6*sin(iTime*0.3), 1.6, 3.6*cos(iTime*0.3));</code>. ' +
+            'The scene should animate.',
+      check: async S => {
+        for (const [u,v] of [[0.5,0.5],[0.45,0.55],[0.55,0.48],[0.5,0.6]])
+          if (await S.changedOverTime(u, v, 0)) return true;
+        return false; } },
+  ],
+});
+</script>
+</body>
+</html>
