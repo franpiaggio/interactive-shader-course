@@ -1,4 +1,4 @@
-# Raymarching for Creative Art — Resources
+# Raymarching with Fragment Shaders — Resources
 
 Curated, high-trust sources. Lessons draw knowledge from here, not from guesses.
 

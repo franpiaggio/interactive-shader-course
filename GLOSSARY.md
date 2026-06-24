@@ -1,4 +1,4 @@
-# Raymarching for Creative Art — Glossary
+# Raymarching with Fragment Shaders — Glossary
 
 The canonical language for this workspace. Lessons adhere to these terms.
 A term is added only once the user can use it correctly — this file grows with understanding.

@@ -1,4 +1,4 @@
-# Mission: Raymarching for creative art
+# Mission: Raymarching with fragment shaders
 
 ## Why
 The user wants to make procedural, Shadertoy-style visual art — abstract scenes,

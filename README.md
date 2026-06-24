@@ -1,4 +1,4 @@
-# Raymarching for Creative Art — an interactive shader course
+# Raymarching with Fragment Shaders — an interactive shader course
 
 A hands-on, browser-based course that takes you from **"what is a pixel"** to a **fully lit, raymarched 3D scene** you can publish on [Shadertoy](https://www.shadertoy.com/) — in 13 short lessons.
 
