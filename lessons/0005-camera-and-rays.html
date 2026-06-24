@@ -36,8 +36,19 @@ basis attached to the camera:</p>
     return mat3(uu, vv, ww);               // columns
 }</code></pre>
 
+<div class="note">
+  <span class="label">What is cross()?</span>
+  The <strong>cross product</strong> of two vectors returns a third vector <em>perpendicular to both</em>.
+  Forward (<code>ww</code>) crossed with up gives the camera's <code>right</code>; right crossed with
+  forward gives a clean <code>up</code> that's exactly square to the other two. That's all you need here —
+  three mutually perpendicular axes glued to the camera, ready to aim rays.
+</div>
+
 <p>Per pixel, the ray direction is the basis applied to the UV, pushed forward by the focal length
-(your zoom):</p>
+(your zoom). This is the <em>same</em> <code>vec3(uv, forward)</code> you built in
+<a href="0004-raymarch-your-first-sphere.html">Lesson 04</a> — except now it's rotated by the camera basis
+instead of nailed to −Z. Remember the mystery <code>-1.5</code> from last lesson? It was the focal length;
+here it's the <code>fov</code>:</p>
 
 <pre><code>vec3 rd = normalize(cam * vec3(uv, fov));   // fov ~1.0 wide, ~2.5 zoomed-in</code></pre>
 

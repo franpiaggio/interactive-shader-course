@@ -21,8 +21,28 @@ Curated, high-trust sources. Lessons draw knowledge from here, not from guesses.
   The cheap-but-gorgeous lighting/color tricks that make a scene read as art.
 - [The Book of Shaders — Patricio Gonzalez Vivo & Jen Lowe](https://thebookofshaders.com/)
   The gentlest on-ramp to fragment-shader fundamentals (UVs, shaping, color). Use for: the absolute basics.
+- [Maxime Heckel — "Painting with math: a gentle study of raymarching"](https://blog.maximeheckel.com/posts/painting-with-math-a-gentle-study-of-raymarching/)
+  Beautiful, beginner-friendly raymarching walkthrough with **interactive widgets**: the march loop, SDFs,
+  `smin`, normals, soft shadows, fog, FBM and **noise derivatives for terrain**, domain repetition, Menger.
+  Use for: a gentle second pass over the core course, and the noise-derivative/erosion terrain technique (advanced A4-style).
 - [Shadertoy](https://www.shadertoy.com/) — the playground + a vast searchable corpus of
   finished shaders to read, fork, and learn idioms from. Use for: practice and reading real art.
+
+## Terrain & landscapes (advanced track)
+
+- [IQ — Terrain marching](https://iquilezles.org/articles/terrainmarching/)
+  The heightfield-march loop (step + sign-change + interpolation + LOD). Use for: the core terrain renderer (A1).
+- [IQ — fBM](https://iquilezles.org/articles/fbm/)
+  Building the height function from octaves of noise. Use for: the terrain elevation (A2).
+- [IQ — Noise & derivatives ("morenoise")](https://iquilezles.org/articles/morenoise/)
+  Analytic gradients → erosion-like ridged terrain that settles on slopes. Use for: A4 realism.
+- [IQ — Domain warping](https://iquilezles.org/articles/warp/)
+  Feed fBM into itself for winding valleys and ridgelines. Use for: A4.
+- [IQ — "Painting a landscape with maths" (talk)](https://www.youtube.com/watch?v=BFld4EBO2RE) ·
+  [Shadertoy "Elevated"](https://www.shadertoy.com/view/MdX3Rr)
+  The definitive end-to-end landscape walkthrough + reference shader. Use for: A3 materials/fog/sky and beyond.
+- [IQ — Outdoor lighting](https://iquilezles.org/articles/outdoorslighting/) · [Fog](https://iquilezles.org/articles/fog/)
+  Sun + sky ambient + bounce, and atmospheric distance fog. Use for: A2/A3 shading.
 
 ## Wisdom (Communities)
 

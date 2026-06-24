@@ -26,6 +26,15 @@
 
 <h2>Self-similarity by iteration</h2>
 
+<div class="note">
+  <span class="label">You already know half of this</span>
+  A fractal is just two tools you've met, stacked: <strong>fold the domain</strong>
+  (<a href="0009-domain-repetition.html">Lesson 09's <code>mod</code></a>, so one carve repeats everywhere)
+  and <strong>subtract</strong> (<a href="0003-combining-shapes-sdf-booleans.html">Lesson 03's
+  <code>max</code></a>, to cut the hole). The only new move is doing it in a <em>loop</em> that shrinks the
+  scale each pass. Don't try to picture all of it at once — picture one carve, then trust the loop.
+</div>
+
 <p>Start with a box. Carve a cross-shaped hole through it (that's the "+1" Menger step). Now do the
 <em>same carve</em> again on each remaining piece, three times smaller — and again, and again. Each pass
 multiplies the detail; the SDF stays a dozen lines:</p>
@@ -46,6 +55,31 @@ multiplies the detail; the SDF stays a dozen lines:</p>
 <p>Each iteration adds a finer level of holes. Three or four passes already looks impossibly intricate;
 the cost is just a few more loop turns per ray step.</p>
 
+<h3>Reading the carve, one line at a time</h3>
+
+<p>The middle four lines look cryptic; here's each one in plain terms — you never have to memorise this,
+just see that nothing is magic:</p>
+
+<ul>
+  <li><code>a = mod(p*s, 2.0) - 1.0</code> — fold space into repeating <code>−1…1</code> cells at the
+  current scale <code>s</code> (exactly the Lesson&nbsp;09 fold). Every cell now looks the same.</li>
+  <li><code>s *= 3.0</code> — the next pass works on a grid three times finer.</li>
+  <li><code>r = abs(1.0 - 3.0*abs(a))</code> — distance to the cross arms inside the cell. <code>abs(a)</code>
+  mirrors into one quadrant; the rest measures how far you are from the cross's bars.</li>
+  <li><code>c = (min(min(max(r.x,r.y), …)) - 1.0)/s</code> — turn that into the SDF of the cross-shaped
+  cutter, scaled back down by <code>s</code> so it matches this pass's size.</li>
+  <li><code>d = max(d, c)</code> — <strong>subtract</strong> the cutter from what we have (Lesson&nbsp;03's
+  carve). That's the hole.</li>
+</ul>
+
+<div class="note">
+  <span class="label">Two new helpers you'll see in the lab</span>
+  <code>rotX(a)</code> and <code>rotY(a)</code> are <strong>rotation matrices</strong> — multiply a point
+  by one and it spins around that axis by angle <code>a</code> (built from <code>sin</code>/<code>cos</code>).
+  Rotating <code>p</code> before <code>map</code> spins the whole fractal. You'll lean on these from here on;
+  copy them as-is for now.
+</div>
+
 <h2>Play — turn up the recursion</h2>
 
 <p><code>detail</code> sets how many carve passes run (0 = plain box, 5 = dense lace). <code>spin</code>
@@ -62,9 +96,11 @@ rotates it so you can see the 3D structure. Watch detail explode for almost no c
 
 <div class="pitfall">
   <span class="label">Watch for</span>
-  Iterated SDFs are only <em>approximate</em> distances (they slightly over-estimate), so rays can
-  overshoot thin features. If the surface looks eroded, lower the hit threshold or take a fraction of the
-  step (<code>t += d*0.8</code>). More iterations also cost more — there's a real budget here.
+  Iterated SDFs are only <em>approximate</em> distances. The folding and <code>s *= 3.0</code> scaling
+  stretch space, so the value returned can be a little <em>larger</em> than the true nearest distance — and
+  a full sphere-tracing step might then jump straight past a thin wall. If the surface looks eroded, lower
+  the hit threshold or take a fraction of the step (<code>t += d*0.85</code>, as the lab does). More
+  iterations also cost more — there's a real budget here.
 </div>
 
 <h2>Check yourself</h2>

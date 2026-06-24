@@ -36,9 +36,21 @@ return sdSphere(q, r);                  // one sphere → an infinite grid of sp
 three for a crystal.</p>
 
 <div class="note">
-  <span class="label">Per-cell variation</span>
-  The <em>cell id</em> <code>round(p/s)</code> is constant within a cell — feed it to a hash and a palette
-  and every copy gets its own color or height, so the lattice looks designed, not stamped.
+  <span class="label">Why the +0.5·s … −0.5·s?</span>
+  <code>mod(p, s)</code> alone wraps every point into the range <code>0 … s</code>, which puts the cell's
+  <em>corner</em> at the origin — your shape would be sliced by the seam. Adding <code>0.5*s</code> before
+  and subtracting it after just shifts the wrap so the range becomes <code>−s/2 … s/2</code>: now the
+  origin sits at the cell's <em>center</em>, where a sphere built around <code>length(q)</code> belongs.
+</div>
+
+<div class="note">
+  <span class="label">Per-cell variation — and what a hash is</span>
+  The <em>cell id</em> <code>round(p/s)</code> is a whole number, constant within a cell. To give each copy
+  its own look you need a stable "random" value per id — that's a <strong>hash</strong>: a function that
+  scrambles its input into a chaotic-looking but <em>completely deterministic</em> number in
+  <code>0 … 1</code> (same id → same value every frame, so cells don't flicker). Feed that to a palette and
+  every copy gets its own color or height, so the lattice looks designed, not stamped. You'll reuse the
+  same <code>hash</code> for noise in <a href="0011-volumetric-clouds.html">Lesson 11</a>.
 </div>
 
 <h2>Play — an endless lattice</h2>

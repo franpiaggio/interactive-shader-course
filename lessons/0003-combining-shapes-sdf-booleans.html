@@ -50,6 +50,16 @@ organic instead of CSG-blocky:</p>
 <p><code>k</code> is the blend radius: <code>0</code> = a hard <code>min</code>, larger = more melt.</p>
 
 <div class="note">
+  <span class="label">Reading the formula (not just trusting it)</span>
+  Two moves. <code>h</code> is a smooth <code>0→1</code> dial for "how close are the two surfaces?" — far
+  apart, <code>h</code> pins to 0 or 1 and <code>mix(b,a,h)</code> just returns the nearer surface, i.e. a
+  plain <code>min</code>. Only <em>near the join</em> does <code>h</code> sit mid-range, and the second term
+  <code>- k*h*(1-h)</code> kicks in: that's a little bump that's zero at the ends and biggest at
+  <code>h=0.5</code>, so it carves a rounded fillet right where the shapes meet. No melt far away, maximum
+  melt at the seam — that's the whole trick.
+</div>
+
+<div class="note">
   <span class="label">This is a 3D skill in disguise</span>
   Everything here — <code>min</code>, <code>max</code>, <code>smin</code> — works identically when the
   point is a <code>vec3</code>. The scene function you'll write for raymarching (<code>map(vec3 p)</code>)

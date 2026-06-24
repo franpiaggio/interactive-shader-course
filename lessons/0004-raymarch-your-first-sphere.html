@@ -32,6 +32,30 @@ The scene is still just an SDF — now <code>map(vec3 p)</code> instead of <code
 
 <pre><code>float map(vec3 p) { return length(p) - 1.0; }   // a unit sphere — your Lesson 02 circle, in 3D</code></pre>
 
+<h2>From pixel to ray — where the 3D comes from</h2>
+
+<p>This is the one genuinely new idea, so go slow. Picture a <strong>pinhole camera</strong>: your eye sits
+at a point, and a flat "sensor" floats one short distance <em>in front</em> of it. Each pixel is a spot on
+that sensor. The ray for a pixel is simply the line from the eye, <em>through</em> that spot, out into the
+scene.</p>
+
+<p>You already have the spot: it's <code>uv</code>, the same centered, aspect-correct coordinate from
+Lesson 02 — now read as a position on the sensor (<code>uv.x</code> across, <code>uv.y</code> up). To make
+a 3D direction you just add the third axis — how far <em>forward</em> the sensor sits:</p>
+
+<pre><code>vec3 ro = vec3(0.0, 0.0, 3.0);          // the eye: 3 units back, looking toward -Z
+vec3 rd = normalize(vec3(uv, -1.5));    // through pixel (uv) and 1.5 units forward (-Z)</code></pre>
+
+<div class="note">
+  <span class="label">Read the vector</span>
+  <code>vec3(uv, -1.5)</code> is <code>(uv.x, uv.y, -1.5)</code>: sideways + up come from the pixel,
+  and <code>-1.5</code> is how far ahead the sensor sits (negative because the camera looks down −Z). That
+  number is the <strong>focal length</strong> — your zoom. Bigger magnitude = rays bunch toward straight-ahead
+  = narrower view = zoomed in. <code>normalize</code> makes it length&nbsp;1 so that <code>t</code> below
+  measures true distance. In <a href="0005-camera-and-rays.html">Lesson 05</a> you'll replace this fixed eye
+  with a camera you can orbit — but the idea is exactly this.
+</div>
+
 <h2>Sphere tracing — why the loop works</h2>
 
 <p>Here's the beautiful part. <code>map(p)</code> is the distance to the <em>nearest</em> surface. So

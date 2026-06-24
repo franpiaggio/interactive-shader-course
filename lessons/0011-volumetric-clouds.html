@@ -26,10 +26,20 @@
 
 <h2>Surfaces stop; volumes accumulate</h2>
 
-<p>Instead of <code>if (d &lt; 0.001) hit</code>, you take <em>fixed</em> steps and at each one read a
-<strong>density</strong> (from <a href="0004-raymarch-your-first-sphere.html">fbm noise</a>). You blend
-that step's color onto the running total, weighted by how much light still gets through
-(<code>1 - alpha</code>), and stop when the ray is opaque:</p>
+<p>Until now the loop asked one yes/no question — <em>did the ray hit?</em> A volume asks a softer one at
+every step — <em>how much stuff is here?</em> So instead of <code>if (d &lt; 0.001) hit</code>, you take
+<em>fixed</em> steps and at each one read a <strong>density</strong> (0 = clear air, 1 = solid cloud). Each
+step is a thin slab of fog; you stack their colors front-to-back until the ray can't see through any more.</p>
+
+<div class="note">
+  <span class="label">Build the intuition with the simplest volume first</span>
+  Forget noise for a second. Imagine <code>density(p)</code> just returns a constant <code>0.05</code>
+  everywhere — a uniform haze. Stepping through it, each slab adds a little grey and a little opacity, and
+  far things fade out: that's already fog. <strong>Clouds are the same loop</strong> — the <em>only</em>
+  change is swapping that constant for <strong>fbm</strong> (a few octaves of the
+  <a href="0009-domain-repetition.html">Lesson&nbsp;09 hash</a> stacked at finer scales), so density is
+  lumpy instead of flat. The helper is in the lab below.
+</div>
 
 <pre><code>for (int i = 0; i &lt; STEPS; i++) {
     float d = density(p);                  // 0..1 at this point
@@ -42,11 +52,23 @@ that step's color onto the running total, weighted by how much light still gets 
     p += rd * stepSize;
 }</code></pre>
 
+<div class="note">
+  <span class="label">Decoding the two compositing lines</span>
+  <code>c.rgb *= c.a</code> (<em>premultiply</em>): a faint slab should add only a faint bit of colour, so
+  scale its colour by its own opacity. <code>sum += c * (1.0 - sum.a)</code> (<em>front-to-back</em>):
+  whatever you've already accumulated (<code>sum.a</code> opacity) partly blocks the view, so each new slab
+  only contributes through the gap that's <em>still clear</em>, <code>1 - sum.a</code>. Marching front-to-back
+  means nearer cloud correctly hides the cloud behind it — and once <code>sum.a</code> nears 1 there's
+  nothing left to see, so you stop.
+</div>
+
 <h2>Cheap lighting: density difference toward the sun</h2>
 
-<p>A volume's "normal" is the density gradient. Sample density one short step toward the sun and compare:
-if it drops off, this point is near the lit edge of the cloud and glows; if it stays dense, it's in
-shadow. One subtraction buys believable self-shadowed clouds.</p>
+<p>A volume's "normal" is the density gradient — and you find it the <em>same way</em> you found the SDF
+normal in <a href="0007-normals-light-and-shadows.html">Lesson&nbsp;07</a>: sample at an offset and compare
+(a finite difference). Here you sample density one short step toward the sun: if it drops off, this point is
+near the lit edge of the cloud and glows; if it stays dense, sunlight had to push through more cloud to get
+here, so it's in shadow. One subtraction buys believable self-shadowed clouds.</p>
 
 <h2>Play — shape the sky</h2>
 

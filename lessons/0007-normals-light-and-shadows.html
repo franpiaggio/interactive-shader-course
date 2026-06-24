@@ -26,16 +26,22 @@
 
 <h2>Normals from the SDF gradient</h2>
 
-<p>The gradient of the distance field points along the surface normal. You can't differentiate arbitrary
-code, so you approximate it by sampling <code>map</code> around the point — IQ's four-tap tetrahedron
-trick:</p>
+<p>Why the gradient? The distance field grows fastest as you move <em>straight away</em> from the surface —
+so the direction of steepest increase <em>is</em> the outward normal. To find it you don't need calculus on
+your formula: just sample <code>map</code> at a few tiny offsets around the point and see which way distance
+climbs. IQ's trick samples the four corners of a tiny <strong>tetrahedron</strong> (the offsets in
+<code>e</code>; <code>0.5773 ≈ 1/√3</code> is just what makes those four directions evenly spread) and
+combines them into the gradient:</p>
 
 <pre><code>vec3 calcNormal(vec3 p) {
-    vec2 e = vec2(1.0, -1.0) * 0.5773 * 0.0005;
+    vec2 e = vec2(1.0, -1.0) * 0.5773 * 0.0005;   // 0.0005 = how far to sample; 0.5773 = 1/√3
     return normalize(
         e.xyy * map(p + e.xyy) + e.yyx * map(p + e.yyx) +
         e.yxy * map(p + e.yxy) + e.xxx * map(p + e.xxx));
 }</code></pre>
+
+<p>You'll see this exact four-tap appear in almost every later lesson — it's the standard way to get a
+normal from <em>any</em> <code>map</code>.</p>
 
 <h2>Diffuse + ambient</h2>
 

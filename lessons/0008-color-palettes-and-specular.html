@@ -38,6 +38,14 @@ height, normal, iteration count — and the cosine cycles smoothly through hues:
 <p>The phase <code>d</code> offsets red/green/blue differently, so the ramp sweeps through a designed
 range instead of plain grayscale. Change four numbers, get a new mood.</p>
 
+<div class="note">
+  <span class="label">Why a cosine?</span>
+  Because it's smooth and it loops — no hard edges, and the ends meet, so the palette has no ugly seam.
+  Read it per channel as <code>base + amplitude·cos(…)</code>: <code>a</code> sets the middle brightness,
+  <code>b</code> how far it swings, <code>c</code> how many colour cycles across the ramp, and <code>d</code>
+  where red, green and blue each start. Three channels, slightly out of phase, is all a rich gradient is.
+</div>
+
 <h2>Specular — the catch-light</h2>
 
 <p>Diffuse is how much a surface faces the light. <strong>Specular</strong> is a shiny reflection of the
@@ -46,6 +54,16 @@ light toward the camera — bright where the half-vector between light and view 
 <pre><code>vec3 h = normalize(lightDir - rd);          // half-vector (view dir = -rd)
 float spec = pow(max(dot(n, h), 0.0), shininess);  // tight, bright highlight
 col += spec * vec3(1.0);                      // add a white glint</code></pre>
+
+<div class="note">
+  <span class="label">Why <code>-rd</code>, and why "half"</span>
+  <code>rd</code> points <em>from</em> the camera into the scene, so the direction back <em>to</em> the
+  viewer is <code>-rd</code>. The <strong>half-vector</strong> is the average of "toward the light" and
+  "toward the eye": it points exactly where the surface would have to face to bounce the light straight
+  into your eye. So when the normal lines up with <code>h</code> (<code>dot</code> near 1) you're looking
+  right at the reflection — the glint. The <code>pow(…, shininess)</code> just squeezes that into a small
+  bright spot: higher power = tighter, sharper highlight.
+</div>
 
 <h2>Play — design the look</h2>
 
