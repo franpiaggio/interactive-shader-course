@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sphere field — raymarching playground</title>
+<style>
+  html,body{margin:0;height:100%;background:#000;overflow:hidden}
+  canvas{display:block;width:100vw;height:100vh;cursor:crosshair}
+  #err{position:fixed;left:0;top:0;right:0;color:#ff8080;background:#1a0000;
+    font:12px/1.5 ui-monospace,monospace;padding:8px 12px;white-space:pre-wrap;display:none}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<pre id="err"></pre>
+
+<!-- ====== THE SHADER (Shadertoy dialect: mainImage / iResolution / iTime / iMouse) ====== -->
+<script id="frag" type="x-shader/x-fragment">
+#define MAXSTEPS 100
+#define MINDIST .01
+
+// The travelling pulse, shared between the SDF (size) and the shading (colour),
+// set once per frame in mainImage so size + colour stay perfectly in sync.
+float gFront;   // z of the pulse front right now
+float gFade;    // pulse fade envelope (0 at the edges, 1 as it passes)
+
+// Spheres rest at their normal size (R0) and the pulse SHRINKS them as it passes,
+// then they spring back. Shrinking only ever increases clearance, so this is
+// always safe for the camera.
+const float R0    = 0.54321;
+const float RAMP  = 0.44;     // how much they shrink at the crest (min radius ~0.10)
+const float BANDW = 0.028;    // pulse width (smaller = wider, smoother band)
+
+float DistanceEstimator(vec3 pos) {
+    vec3 cell   = floor(pos / 2.0);
+    vec3 center = cell*2.0 + 1.0;
+
+    // same band as the colour: a soft swell that rides the travelling front
+    float pulse = exp(-BANDW*(center.z - gFront)*(center.z - gFront)) * gFade;
+    float r = R0 - RAMP*pulse;                       // radius dips with the wave (shrinks)
+
+    return distance(mod(pos, 2.), vec3(1,1,1)) - r;
+}
+
+// smootherstep — quintic ease (continuous up to acceleration), no velocity kinks.
+float ss(float a, float b, float x) {
+    float t = clamp((x - a) / (b - a), 0.0, 1.0);
+    return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
+}
+
+// deterministic per-cycle "random" in [0,1)
+float hash11(float n) { return fract(sin(n*127.1)*43758.5453); }
+
+// Flight path through the field — it ALTERNATES heading every cycle:
+//   even cycles = HORIZONTAL : cruise forward while weaving side to side
+//   odd  cycles = VERTICAL   : turn ~90 deg and travel up / down for a few seconds
+//
+// Sphere centers all sit at ODD coordinates (mod(pos,2)==1). Key fact: if EITHER
+// x or y is an (even) integer, the distance to every center is >= 1.0 > radius
+// (0.543) — an even coordinate is a "guardian" that keeps us out of all spheres.
+// Horizontal legs are guarded by y (parked on an even corridor); vertical legs are
+// guarded by x (eased to 0). The handoff happens in each cycle's tail, smoothly.
+vec3 camPath(float t) {
+    float P = 11.0;                // seconds per leg
+    float n = floor(t / P);
+    float u = fract(t / P);
+
+    float vHere = mod(n,       2.0) < 0.5 ? 0.0 : 1.0;   // is THIS leg vertical?
+    float vNext = mod(n + 1.0, 2.0) < 0.5 ? 0.0 : 1.0;
+
+    // x sways on horizontal legs; eases to 0 (the guardian) for the vertical leg,
+    // handing off in the tail so a guardian is always on.
+    float weaveOff = mix(vHere, vNext, ss(0.80, 1.0, u));
+    float sway = 2.2*sin(t*0.42) + 0.45*sin(t*0.85);
+    float x = sway * (1.0 - weaveOff);
+
+    // vertical legs swing between two even corridors, alternating DOWN then UP
+    float Lo = 6.0, Hi = -8.0;
+    float Y0 = (mod(n,       4.0) < 2.0) ? Lo : Hi;
+    float Y1 = (mod(n + 1.0, 4.0) < 2.0) ? Lo : Hi;
+    float yW = ss(0.18, 0.78, u);
+    float y  = mix(Y0, Y1, yW) + 0.16*sin(t*0.7);
+
+    // forward cruises at full speed on horizontal legs; on a vertical leg the
+    // forward speed dips mid-leg so the heading tilts to near-vertical, then resumes.
+    float zBump = ss(0.20, 0.55, u) * (1.0 - ss(0.60, 0.92, u));
+    float z = t*2.0 - vHere*3.5*zBump;
+    return vec3(x, y, z);
+}
+
+// Now also reports WHERE the ray landed and whether it actually hit a sphere,
+// so we can colour each sphere individually.
+float trace(vec3 from, vec3 direction, out vec3 hitPos, out bool hit) {
+    float totalDistance = 0.0;
+    int steps;
+    hit = false;
+    for (steps=0; steps < MAXSTEPS; steps++) {
+        vec3 p = from + totalDistance * direction;
+        float dist = DistanceEstimator(p);
+        totalDistance += dist;
+        if (dist < MINDIST) { hit = true; break; }
+    }
+    hitPos = from + totalDistance * direction;
+    return 1.0 - float(steps)/float(MAXSTEPS);   // step-count glow / silhouette halo
+}
+
+void mainImage( out vec4 fragColor, in vec2 fragCoord ) {
+
+    vec2 uv = (fragCoord - 0.5*iResolution.xy) / iResolution.y;
+
+    float t = iTime;
+
+    // Camera position + a point a little further down the same path to look at.
+    vec3 ro     = camPath(t);
+    // look a little down the path — small forward bias so the nose follows the
+    // climb/dive (points up when rising) without ever staring straight up.
+    vec3 target = camPath(t + 0.9) + vec3(0.0, 0.0, 1.2);
+
+    // ---- the travelling pulse (drives BOTH sphere size and colour) ----
+    // A bright front appears behind the camera, races forward faster than us,
+    // overtakes and travels FAR down the tunnel, only fading once it's deep in the
+    // distance — so even far spheres follow the wave. One at a time, no overlap.
+    float T_p = 3.6;                       // seconds between pulses
+    float age = mod(t, T_p);
+    float p   = age / T_p;
+    gFront = (ro.z - 14.0) + 18.0*age;     // starts behind, sweeps ~65 units down the tunnel
+    gFade  = ss(0.0, 0.22, p) * (1.0 - ss(0.55, 1.0, p));  // eases in gently, fades out gently
+
+    // Forward, and a rolled "up" so the camera banks into the curves.
+    vec3 fwd  = normalize(target - ro);
+    float roll = clamp(-0.14 * ro.x, -0.5, 0.5);  // bank with lateral position; level when climbing
+    vec3 up   = vec3(sin(roll), cos(roll), 0.0);
+    vec3 right = normalize(cross(fwd, up));
+    vec3 vup   = cross(right, fwd);
+
+    // Mouse nudges where we look, without stopping the flight (drag to steer).
+    vec2 m = (iMouse.z > 0.5) ? (iMouse.xy/iResolution.xy - 0.5) : vec2(0.0);
+    fwd = normalize(fwd + 1.1*m.x*right + 1.1*m.y*vup);
+    right = normalize(cross(fwd, up));
+    vup   = cross(right, fwd);
+
+    vec3 camViewDir = normalize(uv.x*right + uv.y*vup + 1.4*fwd);
+
+    vec3 hitPos; bool hit;
+    float glow = trace(ro, camViewDir, hitPos, hit);
+
+    // Default look: the plain grayscale glow, exactly as before.
+    vec3 col = vec3(glow);
+
+    if (hit) {
+        // which sphere did we land on? centres live at odd coords -> cell*2 + 1
+        vec3 cell   = floor(hitPos / 2.0);
+        vec3 center = cell*2.0 + 1.0;
+
+        // Same band/fade the SDF used to shrink the sphere -> colour and size pulse together.
+        float band  = exp(-BANDW*(center.z - gFront)*(center.z - gFront));
+        float wave  = band * gFade;
+
+        vec3 accent = vec3(1.0, 0.5, 0.15);                 // <-- the ONE pulse colour
+        col = mix(col, accent*glow*1.5, clamp(wave, 0.0, 1.0));
+    }
+
+    fragColor = vec4(col, 1.0);
+}
+</script>
+
+<!-- ====== Minimal WebGL2 harness (don't touch unless you want to change the host) ====== -->
+<script>
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2');
+const errBox = document.getElementById('err');
+
+function showErr(msg){ errBox.style.display='block'; errBox.textContent = msg; }
+
+const VERT = `#version 300 es
+in vec2 p; void main(){ gl_Position = vec4(p,0.0,1.0); }`;
+
+const FRAG_HEADER = `#version 300 es
+precision highp float;
+uniform vec3  iResolution;
+uniform float iTime;
+uniform vec4  iMouse;
+out vec4 outColor;
+`;
+const FRAG_FOOTER = `
+void main(){ mainImage(outColor, gl_FragCoord.xy); }`;
+
+function compile(type, src){
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if(!gl.getShaderParameter(s, gl.COMPILE_STATUS)){
+    showErr('Shader error:\n' + gl.getShaderInfoLog(s));
+    return null;
+  }
+  return s;
+}
+
+const fragSrc = FRAG_HEADER + document.getElementById('frag').textContent + FRAG_FOOTER;
+const prog = gl.createProgram();
+gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT));
+gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, fragSrc));
+gl.bindAttribLocation(prog, 0, 'p');
+gl.linkProgram(prog);
+gl.useProgram(prog);
+
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0);
+gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+const uRes   = gl.getUniformLocation(prog, 'iResolution');
+const uTime  = gl.getUniformLocation(prog, 'iTime');
+const uMouse = gl.getUniformLocation(prog, 'iMouse');
+
+let mx = 0, my = 0, down = 0;
+canvas.addEventListener('pointermove', e => { mx = e.clientX; my = innerHeight - e.clientY; });
+canvas.addEventListener('pointerdown', () => down = 1);
+canvas.addEventListener('pointerup',   () => down = 0);
+
+function resize(){
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  const w = Math.max(2, innerWidth  * dpr | 0);
+  const h = Math.max(2, innerHeight * dpr | 0);
+  canvas.width = w; canvas.height = h;
+  gl.viewport(0, 0, w, h);
+}
+resize();
+addEventListener('resize', resize);
+
+const t0 = performance.now();
+(function loop(){
+  gl.uniform3f(uRes, canvas.width, canvas.height, 1);
+  gl.uniform1f(uTime, (performance.now() - t0) / 1000);
+  gl.uniform4f(uMouse, mx, my, down ? 1 : 0, 0);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
