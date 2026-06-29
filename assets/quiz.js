@@ -10,6 +10,8 @@
    the same length so nothing leaks the correct one.
    ============================================================ */
 
+import { highlightAll } from './highlight.js';   // colour the code showcase blocks
+
 function mount(div) {
   const question = div.dataset.q || '';
   const correct  = parseInt(div.dataset.correct, 10);
@@ -58,6 +60,7 @@ function buildTopNav() {
 export function autoMount() {
   document.querySelectorAll('div.quiz[data-q]').forEach(mount);
   buildTopNav();
+  highlightAll();
 }
 
 if (document.readyState !== 'loading') autoMount();

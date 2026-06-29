@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lesson 14 — Build an infinite sphere field</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+
+<header class="masthead">
+  <p class="kicker">Raymarching with Fragment Shaders · Lesson 14 · Project</p>
+  <h1>Build an infinite sphere field</h1>
+  <p class="standfirst">A capstone that wires together everything you already know — a flythrough lattice of
+  shaded spheres — and then adds the one move that makes it feel alive: a <em>travelling pulse of light</em>
+  that sweeps through the field, shrinking and lighting each sphere as it passes.</p>
+</header>
+
+<main>
+
+<div class="goal">
+  <span class="label">Your win this lesson</span>
+  Assemble a raymarched, infinite sphere field, then write the signature effect from scratch: a pulse
+  that travels along the view, made of one line of <code>exp</code>.
+</div>
+
+<h2>The build, step by step</h2>
+
+<p>Almost every step here is something you've already shipped in an earlier lesson. The whole point of a
+project is assembly — so this is mostly a map back to the rungs you climbed, with two genuinely new ideas
+added on top (marked <strong>new</strong>).</p>
+
+<ol>
+  <li><strong>Start from a flat shader.</strong> Every pixel runs your code and gets a colour from its
+    coordinate — <a href="0001-every-pixel-runs-your-code.html">Lesson 01</a>.</li>
+  <li><strong>Describe one shape with an SDF.</strong> <code>length(p) - r</code> is the distance to a
+    sphere — <a href="0002-shaping-a-glowing-circle.html">Lesson 02</a>,
+    <a href="0004-raymarch-your-first-sphere.html">Lesson 04</a>.</li>
+  <li><strong>Subdivide space.</strong> Fold the point with <code>mod</code> / <code>round</code> and that
+    one sphere tiles into an endless grid — <a href="0009-domain-repetition.html">Lesson 09</a>.</li>
+  <li><strong>Add a camera that moves.</strong> Build rays from the four camera vectors and fly a path
+    through the lattice — <a href="0005-camera-and-rays.html">Lesson 05</a>. <span class="kbd">new</span>:
+    a path that alternates weaving forward with vertical dives (see the note below).</li>
+  <li><strong>A travelling light pulse.</strong> <span class="kbd">new</span> — the heart of this lesson,
+    below.</li>
+  <li><strong>Per-sphere variation.</strong> <span class="kbd">new</span> — give each cell its own size,
+    colour and drift with a <code>hash</code> (the same hash from
+    <a href="0009-domain-repetition.html">Lesson 09</a>).</li>
+  <li><strong>Finish it.</strong> Normals + light + fog + gamma + a touch of bloom and grain —
+    <a href="0007-normals-light-and-shadows.html">Lesson 07</a>,
+    <a href="0008-color-palettes-and-specular.html">Lesson 08</a>,
+    <a href="0012-finishing-and-shadertoy.html">Lesson 12</a>.</li>
+</ol>
+
+<h2>The signature move: a travelling pulse</h2>
+
+<p>We want a band of light that slides through the field — bright on the spheres it's passing, dark
+everywhere else, and clearly <em>moving</em>. The whole effect is one function: a soft bump that follows a
+moving plane.</p>
+
+<pre><code>float gFront;                              // where the pulse front is right now (a z position)
+float pulse(vec3 c){
+    float d = c.z - gFront;                // how far this sphere is from the front
+    return exp(-0.25 * d*d);               // 1 at the front, fading smoothly to 0
+}
+// ...then, per sphere:
+r   -= 0.42 * pulse(c);                     // the pulse SHRINKS the sphere
+col += vec3(1.0,0.55,0.2) * pulse(c);      // ...and GLOWS it</code></pre>
+
+<div class="note">
+  <span class="label">Read the formula — why <code>exp(-k·d²)</code> is a bump</span>
+  <code>d</code> is the signed distance from a sphere to the pulse front. Square it and it's always
+  positive, smallest (zero) right at the front. <code>exp</code> of a <em>negative</em> number is between 0
+  and 1: at the front <code>exp(0)=1</code>; step away and <code>d²</code> grows so <code>exp(-k·d²)</code>
+  slides smoothly toward 0. That's a soft, symmetric hill centred on the front — a <strong>Gaussian</strong>.
+  <code>k</code> is the width dial: bigger <code>k</code> = a tighter, sharper band. To make it
+  <em>travel</em>, just move <code>gFront</code> over time. Subtract the bump from the radius to dent the
+  sphere; add it to the colour to light it. Same bump, two uses, perfectly in sync.
+</div>
+
+<h2>Play — speed, width, depth of the pulse</h2>
+
+<p><code>speed</code> moves the front faster; <code>width</code> is the <code>k</code> dial (higher = a
+thinner band); <code>shrink</code> is how much each sphere dents as the pulse hits it. Drag to orbit and
+watch the band sweep through.</p>
+
+<div id="lab-pulse"></div>
+
+<h2>Now you — bring the pulse to life, graded live</h2>
+
+<p>Here's the field with a pulse front already sweeping, but nothing reacting to it yet. Add the two lines
+marked <code>C1</code> so the spheres shrink and glow as the front passes. <strong>Check</strong> watches a
+few pixels over time and confirms a moving band of light has appeared.</p>
+
+<div id="lab-build"></div>
+
+<div class="note">
+  <span class="label">The two new ideas, briefly</span>
+  <strong>Per-sphere variation:</strong> the cell id <code>round(p/2)</code> fed through a
+  <code>hash</code> gives each sphere a stable random number — use it to vary radius, tint, and a tiny
+  per-cell <code>sin(iTime + phase)</code> orbit, so the field reads as alive rather than stamped (exactly
+  the per-cell trick from <a href="0009-domain-repetition.html">Lesson 09</a>).
+  <strong>The exploring camera:</strong> it alternates legs — weaving forward, then turning to dive up or
+  down — using <code>smoothstep</code> to ease between them. Because every sphere centre sits on odd
+  coordinates, keeping one camera axis on an even number guarantees the path always threads the gaps and
+  never ends up inside a sphere.
+</div>
+
+<div class="pitfall">
+  <span class="label">Watch for</span>
+  When spheres vary in size or drift, neighbouring cells differ, and a plain <code>mod</code> march can
+  <em>overshoot</em> and slice through a sphere. The cheap fix used here is a conservative step —
+  <code>t += d * 0.6</code> — so the ray never strides past a surface a different cell was hiding.
+</div>
+
+<h2>Ship it</h2>
+
+<p>This compact, self-contained version pastes straight into <a href="https://www.shadertoy.com/new">a new
+Shadertoy</a> (and runs in any of this course's labs). It's the whole idea in ~30 lines: infinite field,
+travelling pulse, per-cell tint, orbit camera.</p>
+
+<pre><code>float hash(vec3 p){ p=fract(p*0.3183099+0.1); p*=17.0; return fract(p.x*p.y*p.z*(p.x+p.y+p.z)); }
+float gFront;
+float pulse(vec3 c){ float d=c.z-gFront; return exp(-0.25*d*d); }
+float map(vec3 p){
+    vec3 c = 2.0*round(p/2.0);             // a sphere at every even lattice point
+    float r = 0.62 - 0.42*pulse(c);        // the pulse shrinks it
+    return length(p-c) - r;
+}
+float march(vec3 ro, vec3 rd){ float t=0.0;
+    for(int i=0;i&lt;140;i++){ float d=map(ro+rd*t)*0.6; if(d&lt;0.001) return t; if(t&gt;60.0) break; t+=d; }
+    return -1.0; }
+vec3 nrm(vec3 p){ vec2 e=vec2(1.0,-1.0)*0.5773*0.0015;
+    return normalize(e.xyy*map(p+e.xyy)+e.yyx*map(p+e.yyx)+e.yxy*map(p+e.yxy)+e.xxx*map(p+e.xxx)); }
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord){
+    vec2 uv=(fragCoord-0.5*iResolution.xy)/iResolution.y;
+    gFront = -6.0 + mod(iTime*2.5, 12.0);                  // the front sweeps in z
+    float ang = iMouse.z&gt;0.0 ? (iMouse.x/iResolution.x)*6.28 : iTime*0.2;
+    vec3 ro = vec3(6.0*sin(ang), 3.0, 6.0*cos(ang));
+    vec3 ww=normalize(-ro), uu=normalize(cross(ww,vec3(0,1,0))), vv=cross(uu,ww);
+    vec3 rd=normalize(mat3(uu,vv,ww)*vec3(uv,1.4));
+    vec3 col=vec3(0.03,0.04,0.07);
+    float t=march(ro,rd);
+    if(t&gt;0.0){
+        vec3 p=ro+rd*t; vec3 c=2.0*round(p/2.0); vec3 n=nrm(p);
+        float dif=max(dot(n,normalize(vec3(0.6,0.8,0.4))),0.0);
+        vec3 base=mix(vec3(0.12,0.2,0.34), vec3(0.22,0.3,0.46), hash(c));
+        col=base*(0.2+dif) + vec3(1.0,0.55,0.2)*pulse(c);  // shade + pulse glow
+        col=mix(col, vec3(0.03,0.04,0.07), 1.0-exp(-t*0.04));
+    }
+    col=pow(col, vec3(0.4545));
+    fragColor=vec4(col,1.0);
+}</code></pre>
+
+<p>Want the deluxe version — the fast exploring camera, the directional pulse, size/colour/orbit variation,
+bloom, fog and grain all together? It's live here:
+<a href="https://franpiaggio.github.io/interactive-shader-course/sphere-field/index.html">the full sphere-field demo</a>.</p>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" id="q1"
+  data-q="What does exp(-k * d*d) give you as d moves away from zero?"
+  data-correct="1"
+  data-options='["A value that climbs without any upper bound","A smooth bump peaking at one, fading to zero","A hard on/off step exactly at the front line","A straight line sloping down at a fixed rate"]'
+  data-feedback="At d=0 it is exp(0)=1; squaring d keeps it positive so exp of the negative falls smoothly toward 0 on both sides — a Gaussian bump. k sets how wide."></div>
+
+<div class="quiz" id="q2"
+  data-q="Why does this field use a conservative step like t += d * 0.6?"
+  data-correct="3"
+  data-options='["To render the whole scene with far fewer total steps","To brighten the spheres that the pulse is touching","To spin the camera more smoothly around the field","To stop the ray overshooting through a varied sphere"]'
+  data-feedback="When cells differ in size or drift, the folded distance can over-estimate the true nearest surface; stepping a fraction of it keeps the march from striding past a sphere."></div>
+
+<div class="source">
+  <span class="label">Primary source — read this next</span>
+  <a href="https://iquilezles.org/articles/distfunctions/">IQ — 3D distance functions</a> for the SDF
+  toolbox, and <a href="https://iquilezles.org/articles/sdfrepetition/">SDF repetition</a> for the lattice.
+  See <a href="../RESOURCES.md">RESOURCES.md</a>.
+</div>
+
+<div class="ask">
+  <span class="label">Stuck or curious?</span> Ask me — e.g. <em>"how do I make the pulse travel along the
+  camera's view instead of world z?"</em> or <em>"how do I give each sphere its own colour without
+  flicker?"</em> This is a project lesson: when it runs, you've shipped an original piece — post it.
+</div>
+
+<nav class="lesson-nav">
+  <span>← <a href="0013-fun-experiments-and-ship.html">Lesson 13</a></span>
+  <span><a href="../index.html">Index</a> · Next: <a href="../advanced/index.html">Advanced track — Terrain</a> →</span>
+</nav>
+
+</main>
+
+<script type="module" src="../assets/quiz.js"></script>
+<script type="module">
+import { createShaderLab } from '../assets/shader-lab.js';
+
+createShaderLab(document.getElementById('lab-pulse'), {
+  height: 400,
+  uniforms: [
+    { name: 'uSpeed',  label: 'speed',  min: 0.5, max: 6.0, value: 2.5 },
+    { name: 'uWidth',  label: 'width',  min: 0.06, max: 1.2, value: 0.25 },
+    { name: 'uShrink', label: 'shrink', min: 0.0, max: 0.5, value: 0.42 },
+  ],
+  source:
+`float hash(vec3 p){ p=fract(p*0.3183099+0.1); p*=17.0; return fract(p.x*p.y*p.z*(p.x+p.y+p.z)); }
+float gFront;
+float pulse(vec3 c){ float d=c.z-gFront; return exp(-uWidth*d*d); }
+float map(vec3 p){
+    vec3 c = 2.0*round(p/2.0);
+    float r = 0.62 - uShrink*pulse(c);
+    return length(p-c) - r;
+}
+float march(vec3 ro, vec3 rd){ float t=0.0; for(int i=0;i<140;i++){ float d=map(ro+rd*t)*0.6; if(d<0.001) return t; if(t>60.0) break; t+=d; } return -1.0; }
+vec3 nrm(vec3 p){ vec2 e=vec2(1.0,-1.0)*0.5773*0.0015;
+    return normalize(e.xyy*map(p+e.xyy)+e.yyx*map(p+e.yyx)+e.yxy*map(p+e.yxy)+e.xxx*map(p+e.xxx)); }
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord){
+    vec2 uv=(fragCoord-0.5*iResolution.xy)/iResolution.y;
+    gFront = -6.0 + mod(iTime*uSpeed, 12.0);
+    float ang = iMouse.z>0.0 ? (iMouse.x/iResolution.x)*6.28 : iTime*0.2;
+    vec3 ro=vec3(6.0*sin(ang), 3.0, 6.0*cos(ang));
+    vec3 ww=normalize(-ro), uu=normalize(cross(ww,vec3(0,1,0))), vv=cross(uu,ww);
+    vec3 rd=normalize(mat3(uu,vv,ww)*vec3(uv,1.4));
+    vec3 col=vec3(0.03,0.04,0.07);
+    float t=march(ro,rd);
+    if(t>0.0){
+        vec3 p=ro+rd*t; vec3 c=2.0*round(p/2.0); vec3 n=nrm(p);
+        float dif=max(dot(n,normalize(vec3(0.6,0.8,0.4))),0.0);
+        vec3 base=mix(vec3(0.12,0.2,0.34), vec3(0.22,0.3,0.46), hash(c));
+        col=base*(0.2+dif) + vec3(1.0,0.55,0.2)*pulse(c);
+        col=mix(col, vec3(0.03,0.04,0.07), 1.0-exp(-t*0.04));
+    }
+    col=pow(col, vec3(0.4545));
+    fragColor=vec4(col,1.0);
+}`,
+});
+
+createShaderLab(document.getElementById('lab-build'), {
+  editable: true, height: 380,
+  source:
+`float hash(vec3 p){ p=fract(p*0.3183099+0.1); p*=17.0; return fract(p.x*p.y*p.z*(p.x+p.y+p.z)); }
+float gFront;
+float pulse(vec3 c){ float d=c.z-gFront; return exp(-0.3*d*d); }
+float map(vec3 p){
+    vec3 c = 2.0*round(p/2.0);
+    float r = 0.62;
+    // C1a: let the pulse SHRINK the sphere as the front passes:
+    //   r -= 0.42 * pulse(c);
+    return length(p-c) - r;
+}
+float march(vec3 ro, vec3 rd){ float t=0.0; for(int i=0;i<140;i++){ float d=map(ro+rd*t)*0.6; if(d<0.001) return t; if(t>60.0) break; t+=d; } return -1.0; }
+vec3 nrm(vec3 p){ vec2 e=vec2(1.0,-1.0)*0.5773*0.0015;
+    return normalize(e.xyy*map(p+e.xyy)+e.yyx*map(p+e.yyx)+e.yxy*map(p+e.yxy)+e.xxx*map(p+e.xxx)); }
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord){
+    vec2 uv=(fragCoord-0.5*iResolution.xy)/iResolution.y;
+    gFront = -6.0 + mod(iTime*2.5, 12.0);                  // the front sweeps; camera stays put
+    float ang = iMouse.z>0.0 ? (iMouse.x/iResolution.x)*6.28 : 0.0;
+    vec3 ro=vec3(6.0*sin(ang), 3.0, 6.0*cos(ang));
+    vec3 ww=normalize(-ro), uu=normalize(cross(ww,vec3(0,1,0))), vv=cross(uu,ww);
+    vec3 rd=normalize(mat3(uu,vv,ww)*vec3(uv,1.4));
+    vec3 col=vec3(0.03,0.04,0.07);
+    float t=march(ro,rd);
+    if(t>0.0){
+        vec3 p=ro+rd*t; vec3 c=2.0*round(p/2.0); vec3 n=nrm(p);
+        float dif=max(dot(n,normalize(vec3(0.6,0.8,0.4))),0.0);
+        col=vec3(0.15,0.22,0.34)*(0.2+dif);
+        // C1b: add a warm glow where the pulse is:
+        //   col += vec3(1.0,0.55,0.2) * pulse(c);
+        col=mix(col, vec3(0.03,0.04,0.07), 1.0-exp(-t*0.04));
+    }
+    col=pow(col, vec3(0.4545));
+    fragColor=vec4(col,1.0);
+}`,
+  challenges: [
+    { text: '<b>Bring the pulse to life.</b> Uncomment the two <code>C1</code> lines — shrink the radius ' +
+            'and add the warm glow. A band of light should sweep through the field on its own.',
+      check: async S => {
+        for (const [u,v] of [[0.5,0.5],[0.45,0.5],[0.55,0.5],[0.5,0.45],[0.5,0.55],[0.42,0.46]])
+          if (await S.changedOverTime(u, v, 0)) return true;
+        return false; } },
+  ],
+});
+</script>
+</body>
+</html>
