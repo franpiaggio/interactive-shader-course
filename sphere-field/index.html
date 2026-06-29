@@ -17,8 +17,9 @@
 
 <!-- ====== THE SHADER (Shadertoy dialect: mainImage / iResolution / iTime / iMouse) ====== -->
 <script id="frag" type="x-shader/x-fragment">
-#define MAXSTEPS 100
+#define MAXSTEPS 130
 #define MINDIST .01
+#define STEPK 0.6      // march step factor (<1): avoids overshoot when spheres orbit
 
 // The travelling pulse, shared between the SDF (size) and the shading (colour),
 // set once per frame in mainImage so size + colour stay perfectly in sync.
@@ -31,11 +32,13 @@ float gFade;    // pulse fade envelope (0 at the edges, 1 as it passes)
 // Spheres rest at their normal size (R0) and the pulse SHRINKS them as it passes,
 // then they spring back. Shrinking only ever increases clearance, so this is
 // always safe for the camera.
-const float R0    = 0.54321;
-const float RAMP  = 0.44;     // how much they shrink at the crest (min radius ~0.10)
+const float R0    = 0.39000;  // base radius (a touch smaller again)
+const float RAMP  = 0.316;    // how much they shrink at the crest (scaled with R0)
 const float BANDW = 0.028;    // pulse width (smaller = wider, smoother band)
 
-const float ORBIT = 0.05;   // tiny per-sphere orbit amplitude (sense of life)
+const float ORBIT = 0.16;   // per-sphere orbit amplitude (clearly noticeable float)
+
+float hash31(vec3 p);       // (defined below) per-cell hash, used for size variety
 
 float DistanceEstimator(vec3 pos) {
     vec3 cell   = floor(pos / 2.0);
@@ -44,14 +47,18 @@ float DistanceEstimator(vec3 pos) {
     // same band as the colour: a soft swell that rides the front along the look dir
     float along = dot(center - gRo, gDir);
     float pulse = exp(-BANDW*(along - gS)*(along - gS)) * gFade;
-    float r = R0 - RAMP*pulse;                       // radius dips with the wave (shrinks)
+
+    // each sphere has its own size (moderate variety so the conservative march step
+    // still avoids overshoot); the pulse shrink scales with it.
+    float sizeVar = 0.75 + 0.5*hash31(cell);         // 0.75 .. 1.25
+    float r = (R0 - RAMP*pulse) * sizeVar;
 
     // each sphere drifts on a tiny orbit with its OWN phase (from its cell coords),
     // so they feel independent — minimal, just a faint overall sense of motion.
     float ph  = dot(cell, vec3(13.1, 7.7, 5.3));
-    vec3  orb = ORBIT * vec3(sin(iTime*0.7 + ph),
-                             sin(iTime*0.6 + ph*1.7),
-                             sin(iTime*0.8 + ph*1.3));
+    vec3  orb = ORBIT * vec3(sin(iTime*0.95 + ph),
+                             sin(iTime*0.80 + ph*1.7),
+                             sin(iTime*1.10 + ph*1.3));
 
     return distance(mod(pos, 2.), vec3(1,1,1) + orb) - r;
 }
@@ -75,7 +82,7 @@ float hash11(float n) { return fract(sin(n*127.1)*43758.5453); }
 // Horizontal legs are guarded by y (parked on an even corridor); vertical legs are
 // guarded by x (eased to 0). The handoff happens in each cycle's tail, smoothly.
 vec3 camPath(float t) {
-    float P = 11.0;                // seconds per leg
+    float P = 5.0;                 // seconds per leg (shorter -> turns change faster)
     float n = floor(t / P);
     float u = fract(t / P);
 
@@ -98,7 +105,7 @@ vec3 camPath(float t) {
     // forward cruises at full speed on horizontal legs; on a vertical leg the
     // forward speed dips mid-leg so the heading tilts to near-vertical, then resumes.
     float zBump = ss(0.20, 0.55, u) * (1.0 - ss(0.60, 0.92, u));
-    float z = t*2.0 - vHere*3.5*zBump;
+    float z = t*5.5 - vHere*4.7*zBump;
     return vec3(x, y, z);
 }
 
@@ -114,7 +121,7 @@ float trace(vec3 from, vec3 direction, out vec3 hitPos, out bool hit, out float 
         vec3 p = from + td * direction;
         float dist = DistanceEstimator(p);
         minD = min(minD, dist);
-        td += dist;
+        td += dist * STEPK;                        // conservative step (no overshoot)
         if (dist < MINDIST) { hit = true; break; }
         if (td > 70.0) break;                     // far plane -> background
     }
@@ -159,6 +166,9 @@ vec4 noised3(vec3 x) {                 // returns (value, d/dx, d/dy, d/dz)
     return vec4(v, grad);
 }
 
+// TWO colours: cool blue spheres + the warm "accent" orange for the energy / glow.
+const vec3 SPHERE_COL = vec3(0.14, 0.20, 0.30);   // cool blue spheres
+
 void mainImage( out vec4 fragColor, in vec2 fragCoord ) {
 
     vec2 uv = (fragCoord - 0.5*iResolution.xy) / iResolution.y;
@@ -200,13 +210,16 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord ) {
     vec3 hitPos; bool hit; float bloom;
     float tHit = trace(ro, rd, hitPos, hit, bloom);
 
-    vec3 accent   = vec3(1.0, 0.5, 0.18);                   // pulse / energy colour
+    vec3 accent   = vec3(1.0, 0.55, 0.2);                   // warm pulse / energy colour
     vec3 lightDir = normalize(vec3(0.6, 0.7, -0.4));        // key light
 
-    // background: a deep, dark gradient
-    vec3 bg  = mix(vec3(0.008,0.010,0.020), vec3(0.022,0.028,0.05), clamp(uv.y*0.5+0.5, 0.0, 1.0));
+    // background: a deep blue gradient + a faint, sparse star field (depth in the dark)
+    vec3 bg = mix(vec3(0.010,0.014,0.028), vec3(0.03,0.05,0.09), clamp(uv.y*0.5+0.5, 0.0, 1.0));
+    float star = smoothstep(0.992, 1.0, hash31(floor(rd*500.0)));
+    bg += vec3(0.5,0.6,0.9) * star * 0.5;
     vec3 col = bg;
     float edge = 0.0;                                       // rim term, reused by the bloom
+    vec3 glowTint = vec3(0.25, 0.45, 0.8);                  // bloom colour (overwritten on hit)
 
     if (hit) {
         vec3 n      = calcNormal(hitPos);
@@ -220,41 +233,66 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord ) {
         float fine = noised3(hitPos * 9.0).x;               // fine speckle
         float tex  = mix(nz.x, fine, 0.35);
 
+        // per-sphere variation that stays on the cool tone: clear brightness variety
+        // + a blue<->teal hue mix, so each sphere reads as its own (still all cool).
+        float cv = hash31(cell + vec3(5.2, 1.7, 9.3));                   // brightness
+        float hv = hash31(cell + vec3(2.1, 8.4, 3.6));                   // hue blue<->teal
+        vec3 base = mix(SPHERE_COL, SPHERE_COL*vec3(0.80, 1.25, 0.95), hv);
+        vec3 tint = base * (0.55 + 0.95*cv);
+        glowTint  = tint;
+
         // pulse value at this sphere — same band/fade the SDF used to shrink it
         float along = dot(center - gRo, gDir);
         float wave  = exp(-BANDW*(along - gS)*(along - gS)) * gFade;
 
-        // dark, cool stone material, varied by the texture
-        vec3 mat = vec3(0.12, 0.15, 0.21) * (0.55 + 0.9*tex);
+        // coloured albedo varied by the texture (lifted a bit so the tint reads)
+        vec3 mat = tint * (0.16 + 0.26*tex);
 
-        // --- ambience: a few coloured directional lights (just dot products) ---
+        // --- ambience: a few coloured directional lights, kept dim for a dark mood ---
         vec3 fillDir = normalize(vec3(-0.5,  0.25, 0.6));
         vec3 backDir = normalize(vec3( 0.1, -0.6,  0.5));
-        vec3 lit  = vec3(1.0, 0.92, 0.78) * max(dot(n, lightDir), 0.0);   // warm key
-        lit += vec3(0.26, 0.40, 0.72) * max(dot(n, fillDir), 0.0) * 0.6;  // cool fill
-        lit += vec3(0.50, 0.26, 0.55) * max(dot(n, backDir), 0.0) * 0.5;  // violet back
-        lit += vec3(0.09, 0.12, 0.19);                                    // ambient floor
+        vec3 lit  = vec3(0.7, 0.66, 0.56) * max(dot(n, lightDir), 0.0);    // warm key
+        lit += vec3(0.30, 0.42, 0.70) * max(dot(n, fillDir), 0.0) * 0.30;  // cool fill
+        lit += vec3(0.50, 0.30, 0.60) * max(dot(n, backDir), 0.0) * 0.22;  // violet back
+        lit += vec3(0.045, 0.06, 0.10);                                    // low ambient floor
 
         vec3  hvec = normalize(lightDir - rd);
         float spec = pow(clamp(dot(n, hvec), 0.0, 1.0), 56.0);
-        edge       = pow(1.0 - clamp(dot(n, -rd), 0.0, 1.0), 4.0);
+        float fres = pow(1.0 - clamp(dot(n, -rd), 0.0, 1.0), 2.5);
+        edge       = fres;
+
+        // --- wet / glossy look: reflect a simple dark environment (+ reflected stars) ---
+        vec3 refl = reflect(rd, n);
+        vec3 envc = mix(vec3(0.015,0.022,0.045), vec3(0.06,0.09,0.15), clamp(refl.y*0.5+0.5, 0.0, 1.0));
+        envc += vec3(0.6,0.7,1.0) * smoothstep(0.994, 1.0, hash31(floor(refl*420.0))) * 0.6;
 
         col  = mat * lit;
-        col += vec3(0.85,0.9,1.0) * spec * 0.5;             // crisp highlight
-        col += accent * edge * 0.5;                         // warm rim
-        col += accent * wave * 2.2;                         // emissive pulse
+        col += vec3(0.9,0.95,1.0) * spec * 0.30;            // dim highlight
+        col += envc * fres * 0.7;                           // glossy reflection (fresnel-weighted)
+        col += accent * fres * 0.16;                        // subtle warm rim
+        col += tint * 0.04;                                 // very faint inner self-glow
 
-        col = mix(col, bg*0.4, clamp(tHit/70.0, 0.0, 1.0)); // depth fade into the dark
+        // --- pulse as a PASSING LIGHT: brightest on the side facing the oncoming front ---
+        col += accent * wave * (0.45 + 0.9*max(dot(n, -gDir), 0.0)) * 1.9;
     }
 
-    // cheap single-pass bloom: a SMOOTH skim-halo, only on rims / background so it
-    // never washes the sphere bodies. Tinted warm while a pulse is passing.
-    vec3 bloomCol = vec3(0.22,0.30,0.5) + accent*gFade*1.3;
-    col += bloomCol * bloom * (hit ? edge*0.45 : 0.6);
+    // ---- bloom: faint body glow + soft rim, turning warm only while a pulse passes ----
+    vec3 bloomCol = glowTint + accent*gFade*1.0;
+    col += bloomCol * bloom * (hit ? edge*0.3 + 0.05 : 0.35);
+
+    // ---- atmospheric fog: distant spheres dissolve into a dark haze (warmer near a pulse) ----
+    vec3 fogCol = mix(vec3(0.012,0.016,0.032), accent*0.5, gFade*0.25);
+    if (hit) col = mix(col, fogCol, 1.0 - exp(-tHit*0.020));
 
     // tone map (Reinhard) + gamma
     col = col / (1.0 + col);
     col = pow(col, vec3(0.4545));
+
+    // ---- cinematic post: vignette + animated film grain ----
+    vec2 qv = fragCoord / iResolution.xy;
+    float vig = pow(16.0*qv.x*qv.y*(1.0-qv.x)*(1.0-qv.y), 0.22);
+    col *= mix(0.5, 1.0, vig);
+    col += (hash31(vec3(fragCoord, floor(iTime*60.0))) - 0.5) * 0.035;
 
     fragColor = vec4(col, 1.0);
 }
