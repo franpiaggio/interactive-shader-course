@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sacred Flux — a morphing visionary-art mandala</title>
+<style>
+  html,body{margin:0;height:100%;background:#000;overflow:hidden}
+  canvas{display:block;width:100vw;height:100vh;cursor:crosshair}
+  #err{position:fixed;left:0;top:0;right:0;color:#ff8080;background:#1a0000;
+    font:12px/1.5 ui-monospace,monospace;padding:8px 12px;white-space:pre-wrap;display:none}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<pre id="err"></pre>
+
+<!-- ===== "Sacred Flux" — a SECOND original Alex-Grey-inspired piece =====
+     The camera slowly orbits a radiant mandala-deity whose FORMS keep morphing
+     over time, in a polychromatic jewel palette (blue / violet / magenta / gold)
+     with iridescent edges. Drag the mouse to steer the orbit.
+     ('Inner Lattice', the copper corridor, is a separate piece and stays untouched.) -->
+<script id="frag" type="x-shader/x-fragment">
+#define TAU 6.28318530718
+#define FOLDS 8.0      // mandala symmetry order
+#define NITER 7        // KIFS iterations
+#define STEPS 130
+#define FAR 30.0
+
+mat2 rot(float a){ float c=cos(a), s=sin(a); return mat2(c,-s,s,c); }
+
+// "Alex Grey" jewel palette: blue -> violet -> magenta -> gold (skips acid green),
+// deepened so the colours read as rich gemstone tones, not pastel rainbow.
+vec3 pal(float t){
+    vec3 c = 0.5 + 0.5*cos(TAU*(vec3(1.0,1.0,1.0)*t + vec3(0.62, 0.80, 0.18)));
+    return c*c*(3.0 - 2.0*c);
+}
+
+float h31(vec3 p){ p = fract(p*0.1031); p += dot(p, p.yzx + 33.33); return fract((p.x + p.y)*p.z); }
+
+// background scenery: a drifting cosmic nebula + a sparse twinkling starfield, so the
+// icon floats in a SPACE, not a flat gradient (cheap: only the missed pixels pay).
+vec3 cosmos(vec3 rd, float t){
+    // deep, near-black indigo so the stars actually read (tonemap+gamma lift darks,
+    // so this has to start very low)
+    vec3 c = mix(vec3(0.006,0.004,0.013), vec3(0.014,0.007,0.026), 0.5+0.5*rd.y);
+    // two faint coloured clouds, slowly drifting (kept subtle so they don't grey the sky)
+    float n1 = smoothstep(0.95, -0.1, length(rd.xy - 0.30*vec2(sin(t*0.030), cos(t*0.041))));
+    float n2 = smoothstep(1.05, -0.05, length(rd.xz - 0.40*vec2(cos(t*0.025), sin(t*0.034))));
+    c += pal(0.10)*n1*0.035 + pal(0.62)*n2*0.028;
+    // starfield: dense (three scales), round jittered points, BRIGHT now so they pop
+    // against the dark sky, twinkling.
+    for(int i=0;i<3;i++){
+        float sc = 55.0 + 65.0*float(i);
+        vec3 gp = rd*sc;
+        vec3 id = floor(gp);
+        float rnd = h31(id);
+        vec3 off = (vec3(h31(id+1.7), h31(id+5.3), h31(id+9.1)) - 0.5)*0.7;
+        float dpt = length(fract(gp) - 0.5 - off);
+        float star = step(0.80, rnd) * smoothstep(0.09, 0.0, dpt);   // dense
+        float tw = 0.5 + 0.5*sin(t*3.0 + rnd*40.0);                  // twinkle
+        c += star * tw * (1.1 - 0.28*float(i));                      // bright -> clearly visible
+    }
+    return c;
+}
+
+vec3 gTrap;
+
+float map(vec3 p){
+    float tm = iTime*0.22;                    // morph clock (faster -> forms change sooner)
+
+    // the deity spins on its axis (plus a gentle tumble) so the morph reads from all sides
+    p.xz *= rot(iTime*0.16);
+    p.yz *= rot(0.22*sin(iTime*0.09));
+
+    // --- mandala symmetry around the vertical axis ---
+    float a = atan(p.z, p.x);
+    float r = length(p.xz);
+    float seg = TAU/FOLDS;
+    a = mod(a + seg*0.5, seg) - seg*0.5;
+    a = abs(a);
+    p.xz = vec2(cos(a), sin(a))*r;
+
+    // --- morphing octahedral KIFS --- smaller amplitude so the form stays near the
+    //     known-good range and never fully collapses out of frame ---
+    vec3  off = vec3(1.00,1.30,0.70) + 0.28*vec3(sin(tm), sin(tm*1.3+1.0), sin(tm*0.7+2.0));
+    float fr  = 0.10 + 0.35*sin(tm*0.5);
+
+    vec3 trap = vec3(1e9);
+    float scale = 1.0;
+    const float S = 2.0;
+    for(int i=0;i<NITER;i++){
+        p = abs(p);
+        if(p.x<p.y) p.xy=p.yx;
+        if(p.x<p.z) p.xz=p.zx;
+        if(p.y<p.z) p.yz=p.zy;
+        p.xy *= rot(fr);
+        p = p*S - off*(S-1.0);
+        trap = min(trap, abs(p));
+        scale *= S;
+    }
+    gTrap = trap;
+    // box primitive -> crisp built forms (not blobs)
+    vec3 q = abs(p) - vec3(1.0);
+    return (min(max(q.x,max(q.y,q.z)),0.0) + length(max(q,0.0)))/scale;
+}
+
+// 4-tap tetrahedron normal
+vec3 calcNormal(vec3 p){
+    const vec2 k = vec2(1.0, -1.0);
+    const float e = 0.0016;
+    return normalize(
+        k.xyy*map(p + k.xyy*e) +
+        k.yyx*map(p + k.yyx*e) +
+        k.yxy*map(p + k.yxy*e) +
+        k.xxx*map(p + k.xxx*e));
+}
+
+float calcAO(vec3 p, vec3 n){
+    float ao = 0.0, sca = 1.0;
+    for(int i=0;i<4;i++){
+        float h = 0.015 + 0.16*float(i)/3.0;
+        ao += (h - map(p + n*h))*sca;
+        sca *= 0.7;
+    }
+    return clamp(1.0 - 2.2*ao, 0.0, 1.0);
+}
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord){
+    vec2 uv = (fragCoord - 0.5*iResolution.xy)/iResolution.y;
+    float t = iTime;
+
+    // spherical orbit camera driven by the mouse with OrbitControls-style inertia:
+    // uYaw/uPitch accumulate in JS (drag flings it, it coasts and eases to a stop,
+    // and a slow auto-spin runs when idle). Dollies in/out for a story rhythm.
+    float az = uYaw;
+    float el = uPitch;
+    float camR = 5.0 + 1.0*sin(t*0.06);
+    vec3 ro = camR * vec3(cos(el)*sin(az), sin(el), cos(el)*cos(az));
+
+    vec3 fwd = normalize(vec3(0.0)-ro);
+    vec3 rgt = normalize(cross(vec3(0,1,0), fwd));
+    vec3 up  = cross(fwd, rgt);
+    vec3 rd  = normalize(uv.x*rgt + uv.y*up + 1.25*fwd);   // a touch wider FOV
+
+    // --- march ---
+    float d=0.0, tt=0.0; bool hit=false; vec3 hp;
+    for(int i=0;i<STEPS;i++){
+        hp = ro + rd*tt;
+        d  = map(hp);
+        float eps = 0.0010 + 0.0009*tt;
+        if(d<eps){ hit=true; break; }
+        tt += d*0.55;
+        if(tt>FAR) break;
+    }
+
+    // background scenery: drifting nebula + starfield (the icon floats in real space)
+    vec3 col = cosmos(rd, t);
+
+    if(hit){
+        vec3 n   = calcNormal(hp);
+        float ao = calcAO(hp, n);
+        float fres = pow(1.0 - max(dot(n,-rd),0.0), 2.5);
+
+        vec3 keyDir = normalize(vec3(0.4,0.7,0.5));
+        float dif = max(dot(n, keyDir), 0.0);
+        float amb = 0.18 + 0.20*n.y;
+
+        // jewel colour from the orbit trap; iridescent hue shift toward the edges
+        float tc  = fract(gTrap.x*0.7 + gTrap.y*0.5 + gTrap.z*0.3 + 0.04*t);
+        vec3 base = pal(tc);
+        vec3 irid = pal(tc + 0.22 + 0.25*fres);          // edges shimmer a different hue
+
+        col  = base * ao * (0.16*amb + 0.85*dif);         // darker lit body -> more contrast
+        col += irid * fres * 0.60;                         // iridescent rim (toned down)
+        col += vec3(1.0,0.97,0.9) * pow(fres,5.0) * 0.18;  // tighter, dimmer white-hot edge
+        col += base * 0.05;                                // very faint inner self-glow
+    }
+
+    // (no central core glow — it washed the starfield)
+
+    // tonemap + gamma
+    col = col/(1.0+col);
+    col = pow(col, vec3(0.4545));
+
+    // vignette
+    col *= 1.0 - 0.45*dot(uv,uv);
+
+    fragColor = vec4(col, 1.0);
+}
+</script>
+
+<!-- ====== Minimal WebGL2 harness ====== -->
+<script>
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2');
+const errBox = document.getElementById('err');
+
+function showErr(msg){ errBox.style.display='block'; errBox.textContent = msg; }
+
+const VERT = `#version 300 es
+in vec2 p; void main(){ gl_Position = vec4(p,0.0,1.0); }`;
+
+const FRAG_HEADER = `#version 300 es
+precision highp float;
+uniform vec3  iResolution;
+uniform float iTime;
+uniform vec4  iMouse;
+uniform float uYaw;     // accumulated orbit azimuth (OrbitControls-style)
+uniform float uPitch;   // accumulated orbit elevation
+out vec4 outColor;
+`;
+const FRAG_FOOTER = `
+void main(){ mainImage(outColor, gl_FragCoord.xy); }`;
+
+function compile(type, src){
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if(!gl.getShaderParameter(s, gl.COMPILE_STATUS)){
+    showErr('Shader error:\n' + gl.getShaderInfoLog(s));
+    return null;
+  }
+  return s;
+}
+
+const fragSrc = FRAG_HEADER + document.getElementById('frag').textContent + FRAG_FOOTER;
+const prog = gl.createProgram();
+gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT));
+gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, fragSrc));
+gl.bindAttribLocation(prog, 0, 'p');
+gl.linkProgram(prog);
+gl.useProgram(prog);
+
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0);
+gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+const uRes   = gl.getUniformLocation(prog, 'iResolution');
+const uTime  = gl.getUniformLocation(prog, 'iTime');
+const uMouse = gl.getUniformLocation(prog, 'iMouse');
+const uYaw   = gl.getUniformLocation(prog, 'uYaw');
+const uPitch = gl.getUniformLocation(prog, 'uPitch');
+
+// ---- OrbitControls-style camera: drag to spin, release to coast (inertia),
+//      slow auto-spin when idle. No "hold to look"; the rotation persists. ----
+let yaw = 0.0, pitch = 0.25;     // accumulated orbit angles (radians)
+let vYaw = 0.0, vPitch = 0.0;    // angular velocities (for the coast)
+let dragging = false, lastX = 0, lastY = 0;
+const SENS = 0.006;              // drag sensitivity
+const DAMP = 0.93;              // coast damping (closer to 1 = longer glide)
+const AUTO = 0.0018;            // idle auto-spin per frame
+const PITCH_LIMIT = 1.45;        // don't flip over the poles
+
+let mx = 0, my = 0, down = 0;
+canvas.addEventListener('pointerdown', e => {
+  dragging = true; down = 1; lastX = e.clientX; lastY = e.clientY;
+  vYaw = 0; vPitch = 0;                       // grab: stop any coast
+  canvas.setPointerCapture && canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointermove', e => {
+  mx = e.clientX; my = innerHeight - e.clientY;
+  if (!dragging) return;
+  const dx = e.clientX - lastX, dy = e.clientY - lastY;
+  lastX = e.clientX; lastY = e.clientY;
+  vYaw = -dx * SENS; vPitch = dy * SENS;       // remember the last motion -> becomes the fling
+  yaw += vYaw; pitch += vPitch;
+  pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, pitch));
+});
+function endDrag(){ dragging = false; down = 0; }
+canvas.addEventListener('pointerup', endDrag);
+canvas.addEventListener('pointercancel', endDrag);
+canvas.addEventListener('pointerleave', endDrag);
+
+// QUALITY = max device-pixel-ratio (perf lever). 1.5 balances; 1.0 if it stutters.
+const QUALITY = 1.5;
+function resize(){
+  const dpr = Math.min(devicePixelRatio || 1, QUALITY);
+  const w = Math.max(2, innerWidth  * dpr | 0);
+  const h = Math.max(2, innerHeight * dpr | 0);
+  canvas.width = w; canvas.height = h;
+  gl.viewport(0, 0, w, h);
+}
+resize();
+addEventListener('resize', resize);
+
+const t0 = performance.now();
+(function loop(){
+  // integrate the orbit: coast with damping when released, plus a gentle idle spin
+  if (!dragging) {
+    yaw += vYaw; pitch += vPitch;
+    vYaw *= DAMP; vPitch *= DAMP;
+    pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, pitch));
+  }
+  yaw += AUTO;
+
+  gl.uniform3f(uRes, canvas.width, canvas.height, 1);
+  gl.uniform1f(uTime, (performance.now() - t0) / 1000);
+  gl.uniform4f(uMouse, mx, my, down ? 1 : 0, 0);
+  gl.uniform1f(uYaw, yaw);
+  gl.uniform1f(uPitch, pitch);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
