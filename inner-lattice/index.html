@@ -26,8 +26,8 @@
 #define TAU 6.28318530718
 #define FOLDS 6.0      // mandala symmetry order (lower -> rounder, less star-like)
 #define NITER 5        // KIFS iterations (fewer -> bolder forms, less fine texture, less aliasing)
-#define STEPS 170       // more steps -> the corridor resolves deeper, less acne
-#define FAR 52.0        // longer render distance -> the centre no longer dies to black
+#define STEPS 150       // moderate budget; far pop-in is masked by fog, not brute steps
+#define FAR 48.0        // render distance
 #define CELL 3.6       // spacing between gates down the corridor (closer = denser rhythm)
 #define SPEED 2.4      // how fast we fly
 
@@ -81,25 +81,28 @@ float map(vec3 p){
     // carve the central flight tube. The wall steps in and out in broad TERRACES
     // along the corridor (ancient-temple tiers). Smooth sine (NO fract) so there is
     // no derivative seam for the marcher to overshoot -> no flicker in the rings.
-    float terrace = 0.10*(0.5 + 0.5*sin(wz*1.6));   // smooth periodic tiers
+    float terrace = 0.08*(0.5 + 0.5*sin(wz*1.6));   // smooth periodic tiers (gentler reveal)
     float swell   = 0.040*sin(wz*0.5);              // gentle breathing width
     float tube = (0.44 + terrace + swell) - r;      // >0 inside the tube => empty space
     return smax(gate, tube, 0.07);
 }
 
+// 4-tap tetrahedron normal (2 fewer map() calls than the 6-tap version)
 vec3 calcNormal(vec3 p){
-    vec2 e = vec2(0.0015, 0.0);
-    return normalize(vec3(
-        map(p+e.xyy)-map(p-e.xyy),
-        map(p+e.yxy)-map(p-e.yxy),
-        map(p+e.yyx)-map(p-e.yyx)));
+    const vec2 k = vec2(1.0, -1.0);
+    const float e = 0.0015;
+    return normalize(
+        k.xyy*map(p + k.xyy*e) +
+        k.yyx*map(p + k.yyx*e) +
+        k.yxy*map(p + k.yxy*e) +
+        k.xxx*map(p + k.xxx*e));
 }
 
 // cheap ambient occlusion (IQ): darkens the deep crevices -> bas-relief look
 float calcAO(vec3 p, vec3 n){
     float ao = 0.0, sca = 1.0;
-    for(int i=0;i<5;i++){
-        float h = 0.012 + 0.13*float(i)/4.0;
+    for(int i=0;i<4;i++){                    // 4 taps (was 5)
+        float h = 0.015 + 0.15*float(i)/3.0;
         float d = map(p + n*h);
         ao += (h - d)*sca;
         sca *= 0.7;
@@ -172,9 +175,10 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
         col = base;
     }
 
-    // depth fog into warm darkness (distant tracery dims but never to flat black)
+    // depth fog into warm darkness. A bit denser so far surfaces are already deep in
+    // haze by the time the step budget reaches them -> reveals emerge softly, no pop.
     vec3 fogCol = vec3(0.035, 0.010, 0.006);
-    col = mix(col, fogCol, 1.0 - exp(-tt*0.040));
+    col = mix(col, fogCol, 1.0 - exp(-tt*0.052));
 
     // a faint warm ember toward the vanishing point (depth cue, very contained)
     col += hueHi * 0.04 * exp(-dot(uv,uv)*4.5);
@@ -245,8 +249,12 @@ canvas.addEventListener('pointermove', e => { mx = e.clientX; my = innerHeight -
 canvas.addEventListener('pointerdown', () => down = 1);
 canvas.addEventListener('pointerup',   () => down = 0);
 
+// QUALITY = max device-pixel-ratio. This is the #1 performance lever: 2.0 renders
+// 4x the pixels of 1.0 on a retina screen. 1.5 is a good quality/speed balance;
+// drop to 1.0 if it stutters, raise to 2.0 for a crisp screenshot.
+const QUALITY = 1.5;
 function resize(){
-  const dpr = Math.min(devicePixelRatio || 1, 2);
+  const dpr = Math.min(devicePixelRatio || 1, QUALITY);
   const w = Math.max(2, innerWidth  * dpr | 0);
   const h = Math.max(2, innerHeight * dpr | 0);
   canvas.width = w; canvas.height = h;
