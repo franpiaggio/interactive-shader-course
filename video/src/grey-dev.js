@@ -21,11 +21,20 @@ float smax(float a, float b, float k){
     return mix(b, a, h) + k*h*(1.0-h);
 }
 
+// the corridor's centreline: long, gentle, low-frequency curves so it feels like we
+// occasionally bank through turns instead of only flying dead ahead. The camera and
+// the tube both follow this, so we always stay inside the corridor.
+vec2 bend(float z){
+    return vec2( 1.30*sin(z*0.075) + 0.50*sin(z*0.031),
+                 0.90*sin(z*0.055 + 1.7) );
+}
+
 vec3 gTrap;            // orbit trap (kept for subtle hue variation)
 
 float map(vec3 p){
-    float r  = length(p.xy);                 // radial distance (for the central tube)
     float wz = p.z;                          // continuous world z -> drives the mutation
+    p.xy -= bend(p.z);                        // curve the whole corridor around the centreline
+    float r  = length(p.xy);                 // radial distance (for the central tube)
     float a0 = atan(p.y, p.x);               // original angle (for the wall relief)
 
     // --- endless corridor: repeat the gate down the travel axis ---
@@ -96,9 +105,12 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
     vec2 uv = (fragCoord - 0.5*iResolution.xy)/iResolution.y;
     float t = iTime;
 
-    // --- camera flies forward down the corridor, swaying gently to navigate ---
-    vec3 ro = vec3(0.22*sin(t*0.40), 0.16*sin(t*0.33), t*SPEED);
-    vec3 ta = vec3(0.22*sin((t+0.7)*0.40), 0.16*sin((t+0.7)*0.33), ro.z + 3.0);
+    // --- camera follows the curving corridor, looking a little way up the path so it
+    //     turns into the bends; a gentle sway on top for a hand-flown feel ---
+    float z0 = t*SPEED;
+    float z1 = z0 + 3.0;                                   // look-ahead point on the path
+    vec3 ro = vec3(bend(z0) + vec2(0.16*sin(t*0.40), 0.12*sin(t*0.33)), z0);
+    vec3 ta = vec3(bend(z1) + vec2(0.16*sin((t+0.7)*0.40), 0.12*sin((t+0.7)*0.33)), z1);
 
     vec3 fwd = normalize(ta - ro);
     vec3 rgt = normalize(cross(vec3(0,1,0), fwd));
@@ -107,7 +119,9 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
     fwd = normalize(fwd + 1.1*m.x*rgt + 1.1*m.y*up);
     rgt = normalize(cross(vec3(0,1,0), fwd));
     up  = cross(fwd, rgt);
-    float roll = 0.22*sin(t*0.18);
+    // bank INTO the turn: roll proportional to how fast the path curves sideways
+    float turn = bend(z0 + 2.0).x - bend(z0 - 2.0).x;
+    float roll = clamp(-0.9*turn, -0.5, 0.5) + 0.06*sin(t*0.18);
     vec3 upr  = up*cos(roll) + rgt*sin(roll);
     vec3 rgtr = rgt*cos(roll) - up*sin(roll);
     vec3 rd = normalize(uv.x*rgtr + uv.y*upr + 1.3*fwd);
