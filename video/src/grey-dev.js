@@ -6,8 +6,8 @@
 // frame stays full of fractal receding into warm darkness — no flat black.
 export const GREY = `
 #define TAU 6.28318530718
-#define FOLDS 8.0      // mandala symmetry order of each gate
-#define NITER 8        // KIFS iterations (fractal depth)
+#define FOLDS 6.0      // mandala symmetry order (lower -> rounder, less star-like)
+#define NITER 6        // KIFS iterations (fewer -> bolder forms, less fine texture)
 #define STEPS 170       // more steps -> the corridor resolves deeper, less acne
 #define FAR 52.0        // longer render distance -> the centre no longer dies to black
 #define CELL 3.6       // spacing between gates down the corridor (closer = denser rhythm)
@@ -46,7 +46,7 @@ float map(vec3 p){
     // --- octahedral KIFS: folds the gate into fractal cathedral tracery ---
     vec3 trap = vec3(1e9);
     float scale = 1.0;
-    const float S = 1.85;
+    const float S = 2.00;                    // bigger step per fold -> chunkier, blockier forms
     for(int i=0;i<NITER;i++){
         p = abs(p);
         if(p.x<p.y) p.xy=p.yx;
@@ -60,12 +60,13 @@ float map(vec3 p){
     gTrap = trap;
     float gate = (length(p) - 1.0)/scale;
 
-    // carve the central flight tube, but give its wall real HEIGHT: an undulating
-    // relief (rings along z + petals around the mandala) so we fly through volume,
-    // not flat washers. smax rounds the join so the lip has body.
-    float relief = 0.085*sin(wz*1.7) * cos(a0*FOLDS) + 0.05*sin(wz*0.6);
-    float tube = (0.40 + relief) - r;        // >0 inside the tube => empty space
-    return smax(gate, tube, 0.06);
+    // carve the central flight tube. The wall steps in and out in broad, smooth
+    // TERRACES along the corridor (ancient-temple tiers) — low frequency, no angular
+    // petals, so the silhouette stays round and the DE stays honest (clean contours).
+    float terrace = 0.11*smoothstep(0.35, 0.70, fract(wz*0.55));  // big smooth ledges
+    float swell   = 0.045*sin(wz*0.5);                            // gentle breathing width
+    float tube = (0.44 + terrace + swell) - r;   // >0 inside the tube => empty space
+    return smax(gate, tube, 0.07);
 }
 
 vec3 calcNormal(vec3 p){
@@ -93,8 +94,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
     float t = iTime;
 
     // --- camera flies forward down the corridor, swaying gently to navigate ---
-    vec3 ro = vec3(0.28*sin(t*0.40), 0.20*sin(t*0.33), t*SPEED);
-    vec3 ta = vec3(0.28*sin((t+0.7)*0.40), 0.20*sin((t+0.7)*0.33), ro.z + 3.0);
+    vec3 ro = vec3(0.22*sin(t*0.40), 0.16*sin(t*0.33), t*SPEED);
+    vec3 ta = vec3(0.22*sin((t+0.7)*0.40), 0.16*sin((t+0.7)*0.33), ro.z + 3.0);
 
     vec3 fwd = normalize(ta - ro);
     vec3 rgt = normalize(cross(vec3(0,1,0), fwd));
@@ -119,9 +120,9 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
     for(int i=0;i<STEPS;i++){
         hp = ro + rd*tt;
         d  = map(hp);
-        float eps = 0.0010 + 0.0011*tt;
+        float eps = 0.0009 + 0.0007*tt;       // tighter -> crisper contours
         if(d<eps){ hit=true; break; }
-        tt += d*0.55;                         // conservative step (folded DE overshoots)
+        tt += d*0.50;                         // conservative step (folded DE overshoots)
         if(tt>FAR) break;
     }
 
