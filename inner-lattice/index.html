@@ -25,7 +25,7 @@
 <script id="frag" type="x-shader/x-fragment">
 #define TAU 6.28318530718
 #define FOLDS 6.0      // mandala symmetry order (lower -> rounder, less star-like)
-#define NITER 6        // KIFS iterations (fewer -> bolder forms, less fine texture)
+#define NITER 5        // KIFS iterations (fewer -> bolder forms, less fine texture, less aliasing)
 #define STEPS 170       // more steps -> the corridor resolves deeper, less acne
 #define FAR 52.0        // longer render distance -> the centre no longer dies to black
 #define CELL 3.6       // spacing between gates down the corridor (closer = denser rhythm)
@@ -78,12 +78,12 @@ float map(vec3 p){
     gTrap = trap;
     float gate = (length(p) - 1.0)/scale;
 
-    // carve the central flight tube. The wall steps in and out in broad, smooth
-    // TERRACES along the corridor (ancient-temple tiers) — low frequency, no angular
-    // petals, so the silhouette stays round and the DE stays honest (clean contours).
-    float terrace = 0.11*smoothstep(0.35, 0.70, fract(wz*0.55));  // big smooth ledges
-    float swell   = 0.045*sin(wz*0.5);                            // gentle breathing width
-    float tube = (0.44 + terrace + swell) - r;   // >0 inside the tube => empty space
+    // carve the central flight tube. The wall steps in and out in broad TERRACES
+    // along the corridor (ancient-temple tiers). Smooth sine (NO fract) so there is
+    // no derivative seam for the marcher to overshoot -> no flicker in the rings.
+    float terrace = 0.10*(0.5 + 0.5*sin(wz*1.6));   // smooth periodic tiers
+    float swell   = 0.040*sin(wz*0.5);              // gentle breathing width
+    float tube = (0.44 + terrace + swell) - r;      // >0 inside the tube => empty space
     return smax(gate, tube, 0.07);
 }
 
@@ -142,7 +142,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
         d  = map(hp);
         float eps = 0.0009 + 0.0007*tt;       // tighter -> crisper contours
         if(d<eps){ hit=true; break; }
-        tt += d*0.50;                         // conservative step (folded DE overshoots)
+        tt += d*0.45;                         // safer step -> no overshoot flicker deep in the rings
         if(tt>FAR) break;
     }
 
