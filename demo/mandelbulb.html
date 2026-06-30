@@ -24,6 +24,14 @@
 
 mat2 rot(float a){ float c=cos(a), s=sin(a); return mat2(c,-s,s,c); }
 
+// --- smooth 1D value noise, used to WANDER the morph params instead of sin() ---
+// sin() is a pendulum (it retraces the same path); noise drifts forward and never
+// returns to the same configuration -> endless, non-repeating mutation.
+float h11(float n){ return fract(sin(n)*43758.5453123); }
+float vnoise(float x){ float i=floor(x), f=fract(x); f=f*f*(3.0-2.0*f); return mix(h11(i), h11(i+1.0), f); }
+float wander(float x){ return 0.65*vnoise(x) + 0.35*vnoise(x*2.03 + 11.7); }   // ~[0,1]
+float wsign(float x){ return wander(x)*2.0 - 1.0; }                            // ~[-1,1]
+
 // iridescent jewel palette: teal -> blue -> violet -> magenta -> amber (deepened mids)
 vec3 pal(float t){
     vec3 c = 0.5 + 0.5*cos(TAU*(t + vec3(0.0,0.12,0.32)));
@@ -55,17 +63,22 @@ float gTrap;   // orbit trap: how close the orbit passed to the origin
 
 // Mandelbulb distance estimator (the classic spherical-coordinate power map).
 float map(vec3 p){
-    // the "power" breathes between ~6 and ~10, so the lobe count grows/shrinks (~20s cycle)
-    float power = 8.0 + 2.0*sin(iTime*0.32);
+    // every morph axis WANDERS via noise (never oscillates back), each on its own clock,
+    // so the form keeps drifting into new configurations forever and never feels periodic.
 
-    // animated Julia offset: instead of adding the original point each step, we add a
-    // vector that orbits through space -> the whole surface flows and re-forms (strong mutation)
-    vec3 c = p + 0.16*vec3(sin(iTime*0.53), cos(iTime*0.41), sin(iTime*0.31+1.7));
+    // power wanders in ~[6.2, 9.8] -> lobe count keeps changing, never repeating
+    float power = 6.2 + 3.6*wander(iTime*0.045);
 
-    // per-iteration TWIST: a small rotation applied to z every step. It compounds across
-    // iterations, so even a small drifting angle violently reshapes the whole fractal
+    // Julia offset drifts along an open 3D path (a random walk through space) -> the
+    // surface continually flows and re-forms, never retracing
+    vec3 c = p + 0.18*vec3(wsign(iTime*0.05 + 0.0),
+                           wsign(iTime*0.05 + 17.0),
+                           wsign(iTime*0.05 + 41.0));
+
+    // per-iteration TWIST: a small rotation applied to z every step, its angle wandering.
+    // It compounds across iterations, so it violently reshapes the fractal
     // (rotation is an isometry -> the distance estimate stays valid).
-    float ta = 0.45*sin(iTime*0.19);
+    float ta = 0.55*wsign(iTime*0.035 + 7.0);
     mat2 twXY = rot(ta);
     mat2 twYZ = rot(0.7*ta + 0.6);
 
