@@ -18,11 +18,20 @@
 
 <script id="frag" type="x-shader/x-fragment">
 #define TAU 6.28318530718
+#define PI  3.14159265359
 #define ITER 10         // Mandelbulb fold iterations
 #define STEPS 210
 #define FAR 9.0
 
 mat2 rot(float a){ float c=cos(a), s=sin(a); return mat2(c,-s,s,c); }
+
+// --- physically based shading helpers (Cook-Torrance GGX) for the realistic finish ---
+float ggxD(float NoH, float a){ float a2=a*a; float d=NoH*NoH*(a2-1.0)+1.0; return a2/(PI*d*d + 1e-7); }
+float ggxG(float NoV, float NoL, float a){ float k=a*0.5; float gv=NoV/(NoV*(1.0-k)+k); float gl=NoL/(NoL*(1.0-k)+k); return gv*gl; }
+vec3  fresSch(float c, vec3 F0){ return F0 + (1.0-F0)*pow(1.0-c, 5.0); }
+vec3  fresSchR(float c, vec3 F0, float r){ return F0 + (max(vec3(1.0-r), F0)-F0)*pow(1.0-c, 5.0); }
+// ACES filmic tonemap (Narkowicz approximation) -> realistic highlight rolloff
+vec3 aces(vec3 x){ return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14), 0.0, 1.0); }
 
 // --- smooth 1D value noise, used to WANDER the morph params instead of sin() ---
 // sin() is a pendulum (it retraces the same path); noise drifts forward and never
@@ -130,6 +139,19 @@ float calcAO(vec3 p, vec3 n){
     return clamp(1.0 - 2.4*ao, 0.0, 1.0);
 }
 
+// raymarched soft shadow -> contact shadows in the crevices (a big realism cue)
+float softShadow(vec3 ro, vec3 rd, float k){
+    float res = 1.0, t = 0.02;
+    for(int i=0;i<20;i++){
+        float h = map(ro + rd*t);
+        if(h < 0.0008) return 0.0;
+        res = min(res, k*h/t);
+        t += clamp(h, 0.012, 0.18);
+        if(t > 3.5) break;
+    }
+    return clamp(res, 0.0, 1.0);
+}
+
 void mainImage(out vec4 fragColor, in vec2 fragCoord){
     vec2 uv = (fragCoord - 0.5*iResolution.xy)/iResolution.y;
     float t = iTime;
@@ -179,29 +201,64 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
         colIrid += vec3(0.85,0.92,1.0) * pow(fres,5.0) * 0.30;   // cool white-hot edge
         colIrid += base * 0.07;                                  // inner self-glow
 
-        // --- realistic look (settles into this at the end): polished bronze/stone that
-        //     reflects the starscape, with a real specular highlight ---
-        vec3 V    = -rd;
-        vec3 env  = cosmos(reflect(rd, n), t);                   // reflected cosmos -> believable metal
-        vec3 alb  = mix(vec3(0.30,0.20,0.13), vec3(0.62,0.50,0.36), 0.5+0.5*dif); // warm bronze
-        float spec = pow(max(dot(n, normalize(keyDir + V)), 0.0), 48.0);
-        vec3 colReal  = alb * ao * (0.22*amb + 0.90*dif);
-        colReal += env * (0.18 + 0.55*fres);                     // environment reflection
-        colReal += vec3(1.0,0.96,0.88) * spec * 0.7;             // sharp specular
-        colReal += vec3(1.0,0.93,0.82) * pow(fres,4.0) * 0.10;   // faint rim
+        // --- realistic finish (settles into this at the end): a weathered copper/bronze
+        //     artifact lit by a sun, reflecting the starfield. Full PBR (Cook-Torrance GGX),
+        //     image-based fill from the cosmos, soft contact shadows. ---
+        float real = smoothstep(13.0, 21.0, t);
+        vec3 colReal = colIrid;
+        if(real > 0.001){
+            vec3 V = -rd;
+            vec3 R = reflect(rd, n);
+            float NoV = max(dot(n, V), 1e-4);
+
+            // material: copper/bronze, weathering varies metallic+roughness across the surface
+            float wv      = 0.5 + 0.5*sin(gTrap*7.0);                 // pseudo-random per region
+            vec3  albedo  = mix(vec3(0.46,0.20,0.11), vec3(0.86,0.56,0.34), wv);  // oxidised <-> bright copper
+            float metallic= mix(0.55, 0.92, wv);
+            float rough   = clamp(0.22 + 0.45*(1.0-ao) + 0.12*wv, 0.10, 0.85);    // crevices = rougher/oxidised
+            vec3  F0      = mix(vec3(0.04), albedo, metallic);
+
+            // key light: a warm sun, with raymarched soft shadow
+            vec3  Ldir = normalize(vec3(0.55, 0.62, 0.40));
+            vec3  Lcol = vec3(1.0, 0.94, 0.82) * 3.2;
+            vec3  H    = normalize(V + Ldir);
+            float NoL  = max(dot(n, Ldir), 0.0);
+            float NoH  = max(dot(n, H), 0.0);
+            float VoH  = max(dot(V, H), 0.0);
+            float a    = rough*rough;
+            float D    = ggxD(NoH, a);
+            float G    = ggxG(NoV, NoL, a);
+            vec3  Fs   = fresSch(VoH, F0);
+            vec3  spec = (D*G*Fs) / (4.0*NoV*NoL + 1e-4);
+            vec3  kd   = (1.0 - Fs) * (1.0 - metallic);
+            float sh   = softShadow(hp + n*0.012, Ldir, 14.0);
+            vec3  direct = (kd*albedo/PI + spec) * Lcol * NoL * sh;
+
+            // cool rim/fill light from the opposite side (no shadow) so the dark side reads
+            vec3  Fdir = normalize(vec3(-0.5, 0.1, -0.6));
+            vec3  fill = albedo * max(dot(n, Fdir), 0.0) * vec3(0.10,0.14,0.22) * (1.0-metallic);
+
+            // image-based lighting: specular reflects the starscape; diffuse irradiance from sky
+            vec3  Fr     = fresSchR(NoV, F0, rough);
+            vec3  envSpec= cosmos(R, t) * (1.0 + 2.5*rough);          // brighten (rough = more diffuse-ish env)
+            vec3  envDiff= (cosmos(n, t) + vec3(0.020,0.024,0.045));  // crude irradiance
+            vec3  ambient= (envDiff*albedo*(1.0-metallic) + envSpec*Fr) * ao;
+
+            colReal = direct + fill + ambient;
+            colReal += vec3(1.0,0.93,0.82) * pow(1.0-NoV, 5.0) * 0.06; // faint grazing glow
+        }
 
         // crossfade iridescent -> realistic near the end of the showcase
-        float real = smoothstep(13.0, 21.0, t);
         col = mix(colIrid, colReal, real);
         gReal = real;
     }
 
-    col = col/(1.0+col);
+    // ACES filmic tonemap (realistic highlight rolloff) + gamma
+    col = aces(col);
     col = pow(col, vec3(0.4545));
-    // gentle grade for video pop; ease the extra saturation out as it turns realistic
-    float sat = mix(1.12, 1.0, gReal);
+    // ease the stylised saturation out as it turns realistic
+    float sat = mix(1.12, 1.02, gReal);
     col = mix(vec3(dot(col, vec3(0.299,0.587,0.114))), col, sat);
-    col = clamp((col - 0.5)*1.06 + 0.5, 0.0, 1.0);
     col *= 1.0 - 0.40*dot(uv,uv);
     fragColor = vec4(col, 1.0);
 }
