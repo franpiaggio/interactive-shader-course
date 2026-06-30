@@ -106,7 +106,7 @@ float map(vec3 p){
     // INTRO MORPH: start as a clean sphere and deform into the fractal over the first
     // ~10s (one time), then the noise-wander above keeps it mutating forever.
     float dS = length(p) - 1.15;       // the simple starting shape
-    float build = smoothstep(1.0, 11.0, iTime);
+    float build = smoothstep(0.4, 6.5, iTime);
     return mix(dS, dF, build);
 }
 
