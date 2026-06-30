@@ -237,7 +237,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
 
             // key light: a warm sun, with raymarched soft shadow
             vec3  Ldir = normalize(vec3(0.55, 0.62, 0.40));
-            vec3  Lcol = vec3(1.0, 0.94, 0.82) * 4.6;
+            vec3  Lcol = vec3(1.0, 0.94, 0.82) * 3.2;
             vec3  H    = normalize(V + Ldir);
             float NoL  = max(dot(n, Ldir), 0.0);
             float NoH  = max(dot(n, H), 0.0);
@@ -251,17 +251,14 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
             float sh   = softShadow(hp + n*0.012, Ldir, 14.0);
             vec3  direct = (kd*albedo/PI + spec) * Lcol * NoL * sh;
 
-            // cool fill light from the opposite side (no shadow) so the dark side reads;
-            // a touch reaches metals too, so chrome/obsidian aren't near-black in deep space
+            // cool rim/fill light from the opposite side (no shadow) so the dark side reads
             vec3  Fdir = normalize(vec3(-0.5, 0.1, -0.6));
-            float Fd   = max(dot(n, Fdir), 0.0);
-            vec3  fill = albedo * Fd * vec3(0.22,0.28,0.40) * (0.35 + 0.65*(1.0-metallic));
+            vec3  fill = albedo * max(dot(n, Fdir), 0.0) * vec3(0.10,0.14,0.22) * (1.0-metallic);
 
-            // image-based lighting: specular reflects the starscape; diffuse irradiance from sky.
-            // Constant terms added so the scene has ambient light, not just dark-space reflections.
+            // image-based lighting: specular reflects the starscape; diffuse irradiance from sky
             vec3  Fr     = fresSchR(NoV, F0, rough);
-            vec3  envSpec= (cosmos(R, t) + vec3(0.10,0.11,0.15)) * (1.0 + 2.5*rough);
-            vec3  envDiff= (cosmos(n, t) + vec3(0.085,0.095,0.13));   // brighter sky irradiance
+            vec3  envSpec= cosmos(R, t) * (1.0 + 2.5*rough);          // brighten (rough = more diffuse-ish env)
+            vec3  envDiff= (cosmos(n, t) + vec3(0.020,0.024,0.045));  // crude irradiance
             vec3  ambient= (envDiff*albedo*(1.0-metallic) + envSpec*Fr) * ao;
 
             colReal = direct + fill + ambient;
@@ -274,7 +271,6 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
     }
 
     // ACES filmic tonemap (realistic highlight rolloff) + gamma
-    col *= 1.25;                         // exposure: a bit more light in the scene
     col = aces(col);
     col = pow(col, vec3(0.4545));
     // ease the stylised saturation out as it turns realistic
@@ -341,7 +337,8 @@ let vYaw = 0.0, vPitch = 0.0;
 let dist = 3.2;
 let dragging = false, lastX = 0, lastY = 0;
 let idle = 1.0;                  // eased 0..1: 1 = cinematic drift on, 0 = user in control
-const SENS = 0.006, DAMP = 0.93, AUTO = 0.0012, PITCH_LIMIT = 1.45;
+const SENS = 0.006, DAMP = 0.93, AUTO = 0.00156, PITCH_LIMIT = 1.45;
+const TIMESCALE = 1.3;          // 30% faster: scales all shader time (morph, transitions, cycle)
 const D_MIN = 1.6, D_MAX = 6.5;
 
 function clamp(v,a,b){ return Math.min(b, Math.max(a, v)); }
@@ -405,7 +402,7 @@ const t0 = performance.now();
   yaw += AUTO;
   idle += ((dragging ? 0.0 : 1.0) - idle) * 0.015;   // ease the cinematic drift in/out
   gl.uniform3f(uRes, canvas.width, canvas.height, 1);
-  gl.uniform1f(uTime, (performance.now() - t0) / 1000);
+  gl.uniform1f(uTime, (performance.now() - t0) / 1000 * TIMESCALE);
   gl.uniform1f(uYaw, yaw);
   gl.uniform1f(uPitch, pitch);
   gl.uniform1f(uDist, dist);
