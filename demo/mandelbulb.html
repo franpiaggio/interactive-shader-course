@@ -62,6 +62,13 @@ float map(vec3 p){
     // vector that orbits through space -> the whole surface flows and re-forms (strong mutation)
     vec3 c = p + 0.16*vec3(sin(iTime*0.53), cos(iTime*0.41), sin(iTime*0.31+1.7));
 
+    // per-iteration TWIST: a small rotation applied to z every step. It compounds across
+    // iterations, so even a small drifting angle violently reshapes the whole fractal
+    // (rotation is an isometry -> the distance estimate stays valid).
+    float ta = 0.45*sin(iTime*0.19);
+    mat2 twXY = rot(ta);
+    mat2 twYZ = rot(0.7*ta + 0.6);
+
     vec3 z = p;
     float dr = 1.0;
     float r  = 0.0;
@@ -70,6 +77,8 @@ float map(vec3 p){
         r = length(z);
         if(r > 2.0) break;
         trap = min(trap, r);                       // remember nearest approach -> colour
+        z.xy *= twXY;                              // the twist axis
+        z.yz *= twYZ;
         float theta = acos(clamp(z.z/r, -1.0, 1.0));
         float phi   = atan(z.y, z.x);
         dr = pow(r, power-1.0)*power*dr + 1.0;
