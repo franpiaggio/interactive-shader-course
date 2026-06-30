@@ -33,6 +33,16 @@ vec3  fresSchR(float c, vec3 F0, float r){ return F0 + (max(vec3(1.0-r), F0)-F0)
 // ACES filmic tonemap (Narkowicz approximation) -> realistic highlight rolloff
 vec3 aces(vec3 x){ return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14), 0.0, 1.0); }
 
+// material presets for the shading showcase (albedo, metallic, roughness)
+void material(int i, out vec3 alb, out float met, out float rgh){
+    if      (i==0){ alb=vec3(0.86,0.56,0.34); met=0.92; rgh=0.22; }  // polished copper / bronze
+    else if (i==1){ alb=vec3(1.00,0.78,0.34); met=1.00; rgh=0.15; }  // gold
+    else if (i==2){ alb=vec3(0.95,0.96,1.00); met=1.00; rgh=0.05; }  // chrome / silver mirror
+    else if (i==3){ alb=vec3(0.93,0.90,0.86); met=0.00; rgh=0.34; }  // pearl / white marble (dielectric)
+    else          { alb=vec3(0.045,0.05,0.07); met=0.00; rgh=0.07; } // black obsidian / volcanic glass
+}
+#define NMAT 5
+
 // --- smooth 1D value noise, used to WANDER the morph params instead of sin() ---
 // sin() is a pendulum (it retraces the same path); noise drifts forward and never
 // returns to the same configuration -> endless, non-repeating mutation.
@@ -211,12 +221,19 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
             vec3 R = reflect(rd, n);
             float NoV = max(dot(n, V), 1e-4);
 
-            // material: copper/bronze, weathering varies metallic+roughness across the surface
-            float wv      = 0.5 + 0.5*sin(gTrap*7.0);                 // pseudo-random per region
-            vec3  albedo  = mix(vec3(0.46,0.20,0.11), vec3(0.86,0.56,0.34), wv);  // oxidised <-> bright copper
-            float metallic= mix(0.55, 0.92, wv);
-            float rough   = clamp(0.22 + 0.45*(1.0-ao) + 0.12*wv, 0.10, 0.85);    // crevices = rougher/oxidised
-            vec3  F0      = mix(vec3(0.04), albedo, metallic);
+            // SHADING SHOWCASE: once realistic, the surface keeps cycling through materials
+            // (copper -> gold -> chrome -> pearl -> obsidian -> ...), each held then crossfaded.
+            float ph = max(0.0, t - 21.0) / 9.0;                      // one material every ~9s
+            int   i0 = int(mod(floor(ph),         float(NMAT)));
+            int   i1 = int(mod(floor(ph) + 1.0,   float(NMAT)));
+            float k  = smoothstep(0.72, 1.0, fract(ph));              // hold ~72%, then crossfade
+            vec3  a0,a1; float m0,m1,r0,r1;
+            material(i0, a0,m0,r0);
+            material(i1, a1,m1,r1);
+            vec3  albedo   = mix(a0, a1, k);
+            float metallic = mix(m0, m1, k);
+            float rough    = clamp(mix(r0, r1, k) + 0.12*(1.0-ao), 0.03, 0.9);  // crevices read rougher
+            vec3  F0       = mix(vec3(0.04), albedo, metallic);
 
             // key light: a warm sun, with raymarched soft shadow
             vec3  Ldir = normalize(vec3(0.55, 0.62, 0.40));
