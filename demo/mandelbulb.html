@@ -214,7 +214,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
         // --- realistic finish (settles into this at the end): a weathered copper/bronze
         //     artifact lit by a sun, reflecting the starfield. Full PBR (Cook-Torrance GGX),
         //     image-based fill from the cosmos, soft contact shadows. ---
-        float real = smoothstep(13.0, 21.0, t);
+        float real = smoothstep(11.0, 17.0, t);
         vec3 colReal = colIrid;
         if(real > 0.001){
             vec3 V = -rd;
@@ -223,10 +223,10 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
 
             // SHADING SHOWCASE: once realistic, the surface keeps cycling through materials
             // (copper -> gold -> chrome -> pearl -> obsidian -> ...), each held then crossfaded.
-            float ph = max(0.0, t - 21.0) / 9.0;                      // one material every ~9s
+            float ph = max(0.0, t - 14.0) / 5.0;                      // one material every ~5s
             int   i0 = int(mod(floor(ph),         float(NMAT)));
             int   i1 = int(mod(floor(ph) + 1.0,   float(NMAT)));
-            float k  = smoothstep(0.72, 1.0, fract(ph));              // hold ~72%, then crossfade
+            float k  = smoothstep(0.55, 1.0, fract(ph));              // hold ~55%, then quick crossfade
             vec3  a0,a1; float m0,m1,r0,r1;
             material(i0, a0,m0,r0);
             material(i1, a1,m1,r1);
@@ -237,7 +237,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
 
             // key light: a warm sun, with raymarched soft shadow
             vec3  Ldir = normalize(vec3(0.55, 0.62, 0.40));
-            vec3  Lcol = vec3(1.0, 0.94, 0.82) * 3.2;
+            vec3  Lcol = vec3(1.0, 0.94, 0.82) * 4.6;
             vec3  H    = normalize(V + Ldir);
             float NoL  = max(dot(n, Ldir), 0.0);
             float NoH  = max(dot(n, H), 0.0);
@@ -251,14 +251,17 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
             float sh   = softShadow(hp + n*0.012, Ldir, 14.0);
             vec3  direct = (kd*albedo/PI + spec) * Lcol * NoL * sh;
 
-            // cool rim/fill light from the opposite side (no shadow) so the dark side reads
+            // cool fill light from the opposite side (no shadow) so the dark side reads;
+            // a touch reaches metals too, so chrome/obsidian aren't near-black in deep space
             vec3  Fdir = normalize(vec3(-0.5, 0.1, -0.6));
-            vec3  fill = albedo * max(dot(n, Fdir), 0.0) * vec3(0.10,0.14,0.22) * (1.0-metallic);
+            float Fd   = max(dot(n, Fdir), 0.0);
+            vec3  fill = albedo * Fd * vec3(0.22,0.28,0.40) * (0.35 + 0.65*(1.0-metallic));
 
-            // image-based lighting: specular reflects the starscape; diffuse irradiance from sky
+            // image-based lighting: specular reflects the starscape; diffuse irradiance from sky.
+            // Constant terms added so the scene has ambient light, not just dark-space reflections.
             vec3  Fr     = fresSchR(NoV, F0, rough);
-            vec3  envSpec= cosmos(R, t) * (1.0 + 2.5*rough);          // brighten (rough = more diffuse-ish env)
-            vec3  envDiff= (cosmos(n, t) + vec3(0.020,0.024,0.045));  // crude irradiance
+            vec3  envSpec= (cosmos(R, t) + vec3(0.10,0.11,0.15)) * (1.0 + 2.5*rough);
+            vec3  envDiff= (cosmos(n, t) + vec3(0.085,0.095,0.13));   // brighter sky irradiance
             vec3  ambient= (envDiff*albedo*(1.0-metallic) + envSpec*Fr) * ao;
 
             colReal = direct + fill + ambient;
@@ -271,6 +274,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
     }
 
     // ACES filmic tonemap (realistic highlight rolloff) + gamma
+    col *= 1.25;                         // exposure: a bit more light in the scene
     col = aces(col);
     col = pow(col, vec3(0.4545));
     // ease the stylised saturation out as it turns realistic
