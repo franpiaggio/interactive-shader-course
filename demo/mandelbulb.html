@@ -55,9 +55,12 @@ float gTrap;   // orbit trap: how close the orbit passed to the origin
 
 // Mandelbulb distance estimator (the classic spherical-coordinate power map).
 float map(vec3 p){
-    // the "power" breathes between ~6 and ~10, so the bulb visibly morphs (lobe count
-    // grows/shrinks) over a ~20s cycle
+    // the "power" breathes between ~6 and ~10, so the lobe count grows/shrinks (~20s cycle)
     float power = 8.0 + 2.0*sin(iTime*0.32);
+
+    // animated Julia offset: instead of adding the original point each step, we add a
+    // vector that orbits through space -> the whole surface flows and re-forms (strong mutation)
+    vec3 c = p + 0.16*vec3(sin(iTime*0.53), cos(iTime*0.41), sin(iTime*0.31+1.7));
 
     vec3 z = p;
     float dr = 1.0;
@@ -73,7 +76,7 @@ float map(vec3 p){
         float zr = pow(r, power);
         theta *= power;
         phi   *= power;
-        z = zr*vec3(sin(theta)*cos(phi), sin(phi)*sin(theta), cos(theta)) + p;
+        z = zr*vec3(sin(theta)*cos(phi), sin(phi)*sin(theta), cos(theta)) + c;
     }
     gTrap = trap;
     return 0.5*log(r)*r/dr;                          // analytic DE
