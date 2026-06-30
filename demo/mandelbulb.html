@@ -33,15 +33,24 @@ vec3  fresSchR(float c, vec3 F0, float r){ return F0 + (max(vec3(1.0-r), F0)-F0)
 // ACES filmic tonemap (Narkowicz approximation) -> realistic highlight rolloff
 vec3 aces(vec3 x){ return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14), 0.0, 1.0); }
 
-// material presets for the shading showcase (albedo, metallic, roughness)
-void material(int i, out vec3 alb, out float met, out float rgh){
-    if      (i==0){ alb=vec3(0.86,0.56,0.34); met=0.92; rgh=0.22; }  // polished copper / bronze
-    else if (i==1){ alb=vec3(1.00,0.78,0.34); met=1.00; rgh=0.15; }  // gold
-    else if (i==2){ alb=vec3(0.95,0.96,1.00); met=1.00; rgh=0.05; }  // chrome / silver mirror
-    else if (i==3){ alb=vec3(0.93,0.90,0.86); met=0.00; rgh=0.34; }  // pearl / white marble (dielectric)
-    else          { alb=vec3(0.045,0.05,0.07); met=0.00; rgh=0.07; } // black obsidian / volcanic glass
+// material presets for the shading showcase.
+//   alb = albedo, met = metallic, rgh = roughness
+//   fx  = special-effect amounts: x = thin-film iridescence, y = subsurface, z = glass/gem
+void material(int i, out vec3 alb, out float met, out float rgh, out vec3 fx){
+    alb = vec3(0.8); met = 1.0; rgh = 0.2; fx = vec3(0.0);
+    if      (i==0){ alb=vec3(0.86,0.56,0.34); met=0.92; rgh=0.22; }                        // copper / bronze
+    else if (i==1){ alb=vec3(1.00,0.78,0.34); met=1.00; rgh=0.15; }                        // gold
+    else if (i==2){ alb=vec3(0.96,0.66,0.56); met=1.00; rgh=0.20; }                        // rose gold
+    else if (i==3){ alb=vec3(0.95,0.96,1.00); met=1.00; rgh=0.05; }                        // chrome / silver
+    else if (i==4){ alb=vec3(0.30,0.32,0.38); met=1.00; rgh=0.34; }                        // gunmetal (blued steel)
+    else if (i==5){ alb=vec3(0.60,0.60,0.62); met=1.00; rgh=0.10; fx=vec3(1.0,0.0,0.0); }  // thin-film iridescent (titanium)
+    else if (i==6){ alb=vec3(0.13,0.45,0.30); met=0.00; rgh=0.26; fx=vec3(0.0,1.0,0.0); }  // jade (subsurface)
+    else if (i==7){ alb=vec3(0.72,0.05,0.12); met=0.00; rgh=0.06; fx=vec3(0.0,0.0,1.0); }  // ruby glass
+    else if (i==8){ alb=vec3(0.32,0.55,0.46); met=0.35; rgh=0.55; }                        // verdigris (oxidised copper)
+    else if (i==9){ alb=vec3(0.93,0.90,0.86); met=0.00; rgh=0.34; }                        // pearl / white marble
+    else          { alb=vec3(0.045,0.05,0.07); met=0.00; rgh=0.07; }                       // obsidian / volcanic glass
 }
-#define NMAT 5
+#define NMAT 11
 
 // --- smooth 1D value noise, used to WANDER the morph params instead of sin() ---
 // sin() is a pendulum (it retraces the same path); noise drifts forward and never
@@ -227,13 +236,19 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
             int   i0 = int(mod(floor(ph),         float(NMAT)));
             int   i1 = int(mod(floor(ph) + 1.0,   float(NMAT)));
             float k  = smoothstep(0.55, 1.0, fract(ph));              // hold ~55%, then quick crossfade
-            vec3  a0,a1; float m0,m1,r0,r1;
-            material(i0, a0,m0,r0);
-            material(i1, a1,m1,r1);
+            vec3  a0,a1,fx0,fx1; float m0,m1,r0,r1;
+            material(i0, a0,m0,r0, fx0);
+            material(i1, a1,m1,r1, fx1);
             vec3  albedo   = mix(a0, a1, k);
             float metallic = mix(m0, m1, k);
             float rough    = clamp(mix(r0, r1, k) + 0.12*(1.0-ao), 0.03, 0.9);  // crevices read rougher
+            vec3  fx       = mix(fx0, fx1, k);                        // x=iridescence, y=subsurface, z=glass
             vec3  F0       = mix(vec3(0.04), albedo, metallic);
+
+            // thin-film iridescence: tint the reflectance with an angle-dependent hue
+            // (cheap interference approximation) -> oil-slick / anodised-titanium shimmer
+            vec3 irid = 0.55 + 0.45*cos(TAU*((1.0-NoV)*4.0 + vec3(0.0,0.33,0.67)));
+            F0 = mix(F0, irid, fx.x);
 
             // key light: a warm sun, with raymarched soft shadow
             vec3  Ldir = normalize(vec3(0.55, 0.62, 0.40));
@@ -263,6 +278,18 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
 
             colReal = direct + fill + ambient;
             colReal += vec3(1.0,0.93,0.82) * pow(1.0-NoV, 5.0) * 0.06; // faint grazing glow
+
+            // thin-film: iridescent sheen across the body + stronger rim, so the oil-slick
+            // shimmer reads vividly even against dark space
+            colReal += irid * (pow(1.0-NoV, 1.3)*0.55 + 0.18*ao) * fx.x;
+
+            // jade subsurface: soft inner glow + edge translucency + wrapped light
+            float wrap = clamp((dot(n,Ldir)+0.5)/1.5, 0.0, 1.0);
+            colReal += albedo * (pow(1.0-NoV,1.5)*0.55 + 0.14 + wrap*0.25) * fx.y;
+
+            // glass gem: saturated transmitted body (brighter facing) + bright glassy reflection + glint
+            vec3 gem = albedo*(0.30 + 0.55*NoV) + envSpec*Fr*1.3 + vec3(1.0)*pow(NoH,160.0)*0.7;
+            colReal = mix(colReal, gem, fx.z);
         }
 
         // crossfade iridescent -> realistic near the end of the showcase
