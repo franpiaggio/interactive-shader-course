@@ -18,8 +18,8 @@
 
 <script id="frag" type="x-shader/x-fragment">
 #define TAU 6.28318530718
-#define ITER 9          // Mandelbulb fold iterations
-#define STEPS 180
+#define ITER 10         // Mandelbulb fold iterations
+#define STEPS 210
 #define FAR 9.0
 
 mat2 rot(float a){ float c=cos(a), s=sin(a); return mat2(c,-s,s,c); }
@@ -71,7 +71,7 @@ float map(vec3 p){
 
     // Julia offset drifts along an open 3D path (a random walk through space) -> the
     // surface continually flows and re-forms, never retracing
-    vec3 c = p + 0.18*vec3(wsign(iTime*0.05 + 0.0),
+    vec3 c = p + 0.15*vec3(wsign(iTime*0.05 + 0.0),
                            wsign(iTime*0.05 + 17.0),
                            wsign(iTime*0.05 + 41.0));
 
@@ -128,10 +128,12 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
     vec2 uv = (fragCoord - 0.5*iResolution.xy)/iResolution.y;
     float t = iTime;
 
-    // OrbitControls-style camera (yaw/pitch accumulate in JS; uDist = scroll/pinch zoom)
+    // OrbitControls-style camera (yaw/pitch accumulate in JS; uDist = scroll/pinch zoom).
+    // When idle (uIdle->1) a gentle cinematic drift eases in: a slow pitch bob + a slow
+    // dolly, both noise-driven so they never feel like a loop -> showcase-ready motion.
     float az = uYaw;
-    float el = uPitch;
-    float camR = uDist;
+    float el = uPitch + uIdle*0.13*wsign(iTime*0.028 + 20.0);
+    float camR = uDist + uIdle*0.70*wander(iTime*0.022 + 33.0);
     vec3 ro = camR * vec3(cos(el)*sin(az), sin(el), cos(el)*cos(az));
 
     vec3 fwd = normalize(vec3(0.0)-ro);
@@ -166,13 +168,16 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
         vec3 irid = pal(tc + 0.18 + 0.30*fres);
 
         col  = base * ao * (0.16*amb + 0.95*dif);
-        col += irid * fres * 0.65;
-        col += vec3(0.85,0.92,1.0) * pow(fres,5.0) * 0.22;   // cool white-hot rim
-        col += base * 0.05;
+        col += irid * fres * 0.72;                           // iridescent rim
+        col += vec3(0.85,0.92,1.0) * pow(fres,5.0) * 0.30;   // cool white-hot edge
+        col += base * 0.07;                                  // inner self-glow (molten cavities)
     }
 
     col = col/(1.0+col);
     col = pow(col, vec3(0.4545));
+    // gentle grade for video pop: a touch more saturation + contrast
+    col = mix(vec3(dot(col, vec3(0.299,0.587,0.114))), col, 1.12);
+    col = clamp((col - 0.5)*1.06 + 0.5, 0.0, 1.0);
     col *= 1.0 - 0.40*dot(uv,uv);
     fragColor = vec4(col, 1.0);
 }
@@ -193,6 +198,7 @@ uniform float iTime;
 uniform float uYaw;
 uniform float uPitch;
 uniform float uDist;
+uniform float uIdle;
 out vec4 outColor;
 `;
 const FRAG_FOOTER = `
@@ -224,6 +230,7 @@ const uTime  = gl.getUniformLocation(prog, 'iTime');
 const uYaw   = gl.getUniformLocation(prog, 'uYaw');
 const uPitch = gl.getUniformLocation(prog, 'uPitch');
 const uDist  = gl.getUniformLocation(prog, 'uDist');
+const uIdle  = gl.getUniformLocation(prog, 'uIdle');
 
 // ---- OrbitControls-style camera: drag to spin, release to coast, idle auto-spin,
 //      scroll / pinch to zoom. ----
@@ -231,14 +238,16 @@ let yaw = 0.7, pitch = 0.30;
 let vYaw = 0.0, vPitch = 0.0;
 let dist = 3.2;
 let dragging = false, lastX = 0, lastY = 0;
-const SENS = 0.006, DAMP = 0.93, AUTO = 0.0016, PITCH_LIMIT = 1.45;
+let idle = 1.0;                  // eased 0..1: 1 = cinematic drift on, 0 = user in control
+const SENS = 0.006, DAMP = 0.93, AUTO = 0.0012, PITCH_LIMIT = 1.45;
 const D_MIN = 1.6, D_MAX = 6.5;
 
 function clamp(v,a,b){ return Math.min(b, Math.max(a, v)); }
+function interact(){ idle = 0.0; }   // any input drops the cinematic drift; it eases back
 
 canvas.addEventListener('pointerdown', e => {
   dragging = true; lastX = e.clientX; lastY = e.clientY;
-  vYaw = 0; vPitch = 0;
+  vYaw = 0; vPitch = 0; interact();
   document.body.classList.add('grabbing');
   canvas.setPointerCapture && canvas.setPointerCapture(e.pointerId);
 });
@@ -258,6 +267,7 @@ canvas.addEventListener('pointerleave', endDrag);
 canvas.addEventListener('wheel', e => {
   e.preventDefault();
   dist = clamp(dist + e.deltaY * 0.003, D_MIN, D_MAX);
+  interact();
 }, {passive:false});
 
 let pinchD = 0;
@@ -272,7 +282,7 @@ canvas.addEventListener('touchmove', e => {
 }, {passive:true});
 canvas.addEventListener('touchend', () => { pinchD = 0; });
 
-const QUALITY = 1.5;
+const QUALITY = 2.0;   // crisp for video capture (drop to 1.5 if it stutters live)
 function resize(){
   const dpr = Math.min(devicePixelRatio || 1, QUALITY);
   const w = Math.max(2, innerWidth  * dpr | 0);
@@ -291,11 +301,13 @@ const t0 = performance.now();
     pitch = clamp(pitch, -PITCH_LIMIT, PITCH_LIMIT);
   }
   yaw += AUTO;
+  idle += ((dragging ? 0.0 : 1.0) - idle) * 0.015;   // ease the cinematic drift in/out
   gl.uniform3f(uRes, canvas.width, canvas.height, 1);
   gl.uniform1f(uTime, (performance.now() - t0) / 1000);
   gl.uniform1f(uYaw, yaw);
   gl.uniform1f(uPitch, pitch);
   gl.uniform1f(uDist, dist);
+  gl.uniform1f(uIdle, idle);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   requestAnimationFrame(loop);
 })();
