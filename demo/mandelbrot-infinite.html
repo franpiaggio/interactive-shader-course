@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mandelbrot — endless deep zoom</title>
+<style>
+  html,body{margin:0;height:100%;background:#000;overflow:hidden;}
+  video{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;background:#000;}
+  .hud{position:fixed;left:24px;top:20px;color:#eee;font:600 14px/1.4 ui-monospace,"SF Mono",Menlo,monospace;
+       letter-spacing:.04em;text-shadow:0 2px 8px #000;pointer-events:none;}
+  .hud .tag{background:#6fb7ff;color:#06121f;padding:4px 10px;border-radius:7px;}
+  .sub{position:fixed;left:24px;top:50px;color:#9fb4cc;font:600 12px/1.4 ui-monospace,monospace;text-shadow:0 2px 8px #000;pointer-events:none;}
+  .credit{position:fixed;right:24px;bottom:22px;font:600 13px/1.3 ui-monospace,monospace;}
+  .credit a{color:#ffd9a0;text-decoration:none;text-shadow:0 2px 8px #000;}
+</style>
+</head>
+<body>
+<video id="v" src="mandelbrot-zoom.mp4" autoplay loop muted playsinline></video>
+<div class="hud"><span class="tag">z → z² + c</span> &nbsp;the Mandelbrot set · endless deep zoom</div>
+<div class="sub">pre-rendered with perturbation theory · magnification up to ~10¹²</div>
+<div class="credit"><a href="https://franpiaggio.github.io/interactive-shader-course/" target="_blank">learn how → interactive-shader-course</a></div>
+<script>
+  // keep it playing even if a browser pauses background tabs
+  const v = document.getElementById('v');
+  document.addEventListener('visibilitychange', () => { if(!document.hidden) v.play().catch(()=>{}); });
+  v.addEventListener('click', () => { v.paused ? v.play() : v.pause(); });
+</script>
+</body>
+</html>
