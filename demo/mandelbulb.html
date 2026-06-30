@@ -101,7 +101,13 @@ float map(vec3 p){
         z = zr*vec3(sin(theta)*cos(phi), sin(phi)*sin(theta), cos(theta)) + c;
     }
     gTrap = trap;
-    return 0.5*log(r)*r/dr;                          // analytic DE
+    float dF = 0.5*log(r)*r/dr;        // the full fractal distance estimate
+
+    // INTRO MORPH: start as a clean sphere and deform into the fractal over the first
+    // ~10s (one time), then the noise-wander above keeps it mutating forever.
+    float dS = length(p) - 1.15;       // the simple starting shape
+    float build = smoothstep(1.0, 11.0, iTime);
+    return mix(dS, dF, build);
 }
 
 vec3 calcNormal(vec3 p){
@@ -147,7 +153,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
         d  = map(hp);
         float eps = 0.0006 + 0.0008*tt;
         if(d<eps){ hit=true; break; }
-        tt += d*0.85;
+        tt += d*0.75;                  // conservative (the sphere->fractal blend isn't an exact DE)
         if(tt>FAR) break;
     }
 
