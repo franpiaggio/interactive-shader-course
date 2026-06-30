@@ -144,8 +144,8 @@ function computeRef(cx, cy){
 // Plain float would grain out past ~zoom 6; perturbation stays crisp to ~zoom 15
 // (magnification ~10^11). We dive there, fade through black, switch to the next
 // target, and dive again -> it never stops, and never repeats the same place.
-const ZMIN = 2.0, ZMAX = 15.0, FADE = 1.2;
-let zoom = ZMIN, speed = 0.55, ti = 0;
+const ZMIN = 2.0, ZMAX = 15.0, FADE = 0.5;
+let zoom = ZMIN, speed = 0.7, ti = 0;
 computeRef(TARGETS[0][0], TARGETS[0][1]);
 
 let dragging = false, lastX = 0, lastY = 0;
