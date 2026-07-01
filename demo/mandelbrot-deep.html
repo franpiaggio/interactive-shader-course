@@ -26,7 +26,7 @@
   <button class="btn" id="slow" title="slower">«</button>
   <button class="btn" id="play" title="play / pause">⏸</button>
   <button class="btn" id="fast" title="faster">»</button>
-  <input id="spd" type="range" min="0" max="100" value="40" title="speed">
+  <input id="spd" type="range" min="-100" max="100" value="40" title="speed (left = back, right = deeper)">
 </div>
 
 <script id="frag" type="x-shader/fragment">
@@ -106,15 +106,16 @@ const uScale=gl.getUniformLocation(prog,'uScale'), uCx=gl.getUniformLocation(pro
 // Plain 32-bit float stays crisp to about zoom 5.5; a bit past that it grains, so we
 // restart there. We dive into the seahorse valley: whole set -> seahorses -> spirals.
 const CX = -0.743643887, CY = 0.131825904;   // seahorse valley
-const ZMAX = 5.3;
+const ZMIN = 0.0, ZMAX = 5.0;                 // stop here, just before the float limit / black
 let zoom = 0.0, paused = false;
-let speedUI = 0.40;
-function curSpeed(){ return 0.05 + speedUI*0.6; }   // zoom units / second
+let speedUI = 0.40;                            // -1..1 : positive = deeper, negative = back out
+function curSpeed(){ return speedUI * 0.7; }   // zoom units / second
 
 const playBtn = document.getElementById('play');
-document.getElementById('slow').onclick = () => { const s=document.getElementById('spd'); s.value=Math.max(0,+s.value-12); speedUI=s.value/100; };
-document.getElementById('fast').onclick = () => { const s=document.getElementById('spd'); s.value=Math.min(100,+s.value+12); speedUI=s.value/100; };
-document.getElementById('spd').addEventListener('input', e => { speedUI = e.target.value/100; });
+const spd = document.getElementById('spd');
+document.getElementById('slow').onclick = () => { spd.value = Math.max(-100, +spd.value-15); speedUI = spd.value/100; };
+document.getElementById('fast').onclick = () => { spd.value = Math.min( 100, +spd.value+15); speedUI = spd.value/100; };
+spd.addEventListener('input', e => { speedUI = e.target.value/100; });
 playBtn.onclick = () => { paused = !paused; playBtn.textContent = paused ? '▶' : '⏸'; };
 
 function resize(){ const dpr=Math.min(devicePixelRatio||1, 1.25);
@@ -126,11 +127,11 @@ function frame(now){
   const dt = Math.min((now-last)/1000, 0.05); last = now;
   if(!paused){
     zoom += curSpeed()*dt;
-    if(zoom >= ZMAX) zoom = 0.0;                 // reached the float limit -> restart (no reverse)
+    if(zoom > ZMAX) zoom = ZMAX;                 // reached the limit -> STOP (slide left to go back)
+    if(zoom < ZMIN) zoom = ZMIN;
   }
-  // pan from the whole set toward the seahorse valley over the first stretch of the dive
-  const pan = 1.0 - Math.min(zoom/1.4, 1.0);
-  const cx = CX + (-0.5 - CX)*pan, cy = CY + (0.0 - CY)*pan;
+  // straight zoom into the fixed point (no panning, no direction change)
+  const cx = CX, cy = CY;
   const scale = 1.5 * Math.pow(0.16, zoom);
 
   gl.useProgram(prog);
