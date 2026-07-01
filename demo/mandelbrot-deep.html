@@ -34,7 +34,7 @@
 <script id="frag" type="x-shader/fragment">
 // Perturbation: a high-precision reference orbit Z_n (computed in JS double, in a float
 // texture) lets each pixel iterate only a tiny delta -> crisp far past plain-float limits.
-#define NMAX 500
+#define NMAX 720
 #define AA 1
 
 vec3 pal(float t){ return 0.5 + 0.5*cos(6.28318530718*(t + vec3(0.0,0.33,0.62))); }
@@ -118,7 +118,8 @@ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
-const CX = -0.743643887037158, CY = 0.131825904205312;   // seahorse valley: colorful filigree deep
+const CX = -0.77568377, CY = 0.13646737;   // a Misiurewicz point: self-similar spirals on the
+                                           // boundary forever -> stays colorful, never goes all black
 let refLen = REFN;
 (function computeRef(){
   const data = new Float32Array(REFN*4);
@@ -134,7 +135,7 @@ let refLen = REFN;
 })();
 
 // ---- continuous ping-pong dive (no black, no cuts) ------------------------
-const ZMIN = 4.0, ZMAX = 14.5;   // stay in the colorful filigree (zoom <4 is the dark "neck")
+const ZMIN = 4.0, ZMAX = 9.5;   // cap depth where NMAX iterations still resolve the exterior
 let zoom = ZMIN, dir = 1, paused = false;
 let speedUI = 0.38;                       // 0..1 from the slider
 function curSpeed(){ return 0.15 + speedUI*1.6; }   // zoom units / second
