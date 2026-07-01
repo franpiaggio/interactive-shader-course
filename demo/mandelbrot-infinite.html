@@ -35,7 +35,7 @@
 // it glitch-free and lets the true iteration count exceed the stored reference length, so a
 // short reference drives arbitrarily many iterations. This reaches magnifications the plain
 // float shader (which grains out ~x50) cannot.
-#define MAXI 1200
+#define MAXI 1150
 
 vec3 pal(float t){ return 0.5 + 0.5*cos(6.28318530718*(t + vec3(0.0,0.33,0.62))); }
 vec2 cmul(vec2 a, vec2 b){ return vec2(a.x*b.x - a.y*b.y, a.x*b.y + a.y*b.x); }
@@ -43,18 +43,18 @@ vec2 cmul(vec2 a, vec2 b){ return vec2(a.x*b.x - a.y*b.y, a.x*b.y + a.y*b.x); }
 vec3 mb(vec2 dc){
     int refLen = int(uRefLen + 0.5);
     vec2 dz = vec2(0.0);
+    vec2 X = vec2(0.0);           // X[0] = 0 (kept in a var: only ONE texture read per step)
     int n = 0;                    // reference index
     float iter = 0.0;             // true iteration count (for coloring)
     float r2 = 0.0; bool esc = false;
     for(int i=0;i<MAXI;i++){
-        vec2 X = texelFetch(uRef, ivec2(n, 0), 0).rg;
-        dz = cmul(2.0*X, dz) + cmul(dz, dz) + dc;      // advance the delta
+        dz = cmul(2.0*X, dz) + cmul(dz, dz) + dc;      // advance the delta (uses X = X[n])
         n++; iter += 1.0;
-        vec2 Xn = texelFetch(uRef, ivec2(n, 0), 0).rg;
-        vec2 z = Xn + dz;                              // the true orbit point
+        X = texelFetch(uRef, ivec2(n, 0), 0).rg;       // one read: X[n]
+        vec2 z = X + dz;                               // the true orbit point
         r2 = dot(z, z);
         if(r2 > 256.0){ esc = true; break; }
-        if(r2 < dot(dz, dz) || n >= refLen-1){ dz = z; n = 0; }   // rebase (glitch-free)
+        if(r2 < dot(dz, dz) || n >= refLen-1){ dz = z; n = 0; X = vec2(0.0); }  // rebase (X[0]=0)
     }
     if(!esc) return vec3(0.015, 0.015, 0.03);
     float sn = iter - log2(log2(r2)) + 4.0;
@@ -143,7 +143,7 @@ document.getElementById('fast').onclick = () => { spd.value=Math.min( 100,+spd.v
 spd.addEventListener('input', e => { speedUI = e.target.value/100; });
 playBtn.onclick = () => { paused = !paused; playBtn.textContent = paused ? '▶' : '⏸'; };
 
-function resize(){ const dpr=Math.min(devicePixelRatio||1, 1.0);
+function resize(){ const dpr=Math.min(devicePixelRatio||1, 0.85);
   canvas.width=Math.floor(innerWidth*dpr); canvas.height=Math.floor(innerHeight*dpr); }
 resize(); addEventListener('resize', resize);
 
