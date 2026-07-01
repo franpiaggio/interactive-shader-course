@@ -94,12 +94,12 @@ const uRes=U('iResolution'), uTime=U('iTime'), uScale=U('uScale'),
 
 // ---- one continuous zoom into a spiral, then stop (slide left to go back) ---
 // Fixed Julia constant with rich spiral arms; we dive into a boundary spiral center.
-// Douady rabbit: smooth nested spirals that wind into the alpha fixed point.
-// Infinitely many rabbit copies spiral into alpha = (1 - sqrt(1-4c))/2.
-const JX = -0.123, JY = 0.745;           // the Julia constant c
-const CX = -0.276582, CY = 0.479666;      // alpha fixed point -> spiral focus
-const ZMIN = 0.0, ZMAX = 5.2;            // plain float stays crisp to about here
-let zoom = 0.0, paused = false, speedUI = 0.34;
+// Designed spiral: pick multiplier lambda = 1.107*e^(i*72deg) -> c = lambda/2 - lambda^2/4.
+// alpha = lambda/2 is then exactly a repelling focus with a clean 5-arm spiral.
+const JX = 0.418895, JY = 0.346338;       // the Julia constant c
+const CX = 0.171043, CY = 0.526411;       // alpha fixed point -> 5-arm spiral focus
+const ZMIN = 2.0, ZMAX = 5.2;            // start already inside the star; float stays crisp to ZMAX
+let zoom = 2.5, paused = false, speedUI = 0.34;
 function curSpeed(){ return speedUI * 0.6; }
 
 const playBtn = document.getElementById('play'), spd = document.getElementById('spd');
