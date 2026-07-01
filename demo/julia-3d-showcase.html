@@ -38,16 +38,16 @@ vec3 aces(vec3 x){ return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14), 0.0, 1
 //   fx  = special-effect amounts: x = thin-film iridescence, y = subsurface, z = glass/gem
 void material(int i, out vec3 alb, out float met, out float rgh, out vec3 fx){
     alb = vec3(0.8); met = 1.0; rgh = 0.2; fx = vec3(0.0);
-    if      (i==0){ alb=vec3(0.86,0.56,0.34); met=0.92; rgh=0.22; }                        // copper / bronze
-    else if (i==1){ alb=vec3(1.00,0.78,0.34); met=1.00; rgh=0.15; }                        // gold
-    else if (i==2){ alb=vec3(0.96,0.66,0.56); met=1.00; rgh=0.20; }                        // rose gold
-    else if (i==3){ alb=vec3(0.95,0.96,1.00); met=1.00; rgh=0.05; }                        // chrome / silver
-    else if (i==4){ alb=vec3(0.30,0.32,0.38); met=1.00; rgh=0.34; }                        // gunmetal (blued steel)
+    if      (i==0){ alb=vec3(0.93,0.90,0.86); met=0.00; rgh=0.34; }                        // pearl / white marble (start)
+    else if (i==1){ alb=vec3(0.95,0.96,1.00); met=1.00; rgh=0.05; }                        // chrome / silver
+    else if (i==2){ alb=vec3(0.86,0.56,0.34); met=0.92; rgh=0.22; }                        // copper / bronze
+    else if (i==3){ alb=vec3(1.00,0.78,0.34); met=1.00; rgh=0.15; }                        // gold
+    else if (i==4){ alb=vec3(0.96,0.66,0.56); met=1.00; rgh=0.20; }                        // rose gold
     else if (i==5){ alb=vec3(0.60,0.60,0.62); met=1.00; rgh=0.10; fx=vec3(1.0,0.0,0.0); }  // thin-film iridescent (titanium)
     else if (i==6){ alb=vec3(0.13,0.45,0.30); met=0.00; rgh=0.26; fx=vec3(0.0,1.0,0.0); }  // jade (subsurface)
     else if (i==7){ alb=vec3(0.72,0.05,0.12); met=0.00; rgh=0.06; fx=vec3(0.0,0.0,1.0); }  // ruby glass
     else if (i==8){ alb=vec3(0.32,0.55,0.46); met=0.35; rgh=0.55; }                        // verdigris (oxidised copper)
-    else if (i==9){ alb=vec3(0.93,0.90,0.86); met=0.00; rgh=0.34; }                        // pearl / white marble
+    else if (i==9){ alb=vec3(0.30,0.32,0.38); met=1.00; rgh=0.34; }                        // gunmetal (blued steel)
     else          { alb=vec3(0.045,0.05,0.07); met=0.00; rgh=0.07; }                       // obsidian / volcanic glass
 }
 #define NMAT 11
@@ -204,9 +204,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
         colIrid += vec3(0.85,0.92,1.0) * pow(fres,5.0) * 0.30;   // cool white-hot edge
         colIrid += base * 0.07;                                  // inner self-glow
 
-        // --- realistic finish (settles into this at the end): full PBR (Cook-Torrance GGX),
-        //     image-based fill from the cosmos, soft contact shadows. ---
-        float real = smoothstep(11.0, 17.0, t);
+        // realistic PBR from the very start (starts on the white pearl material), then cycles.
+        float real = 1.0;
         vec3 colReal = colIrid;
         if(real > 0.001){
             vec3 V = -rd;
@@ -215,7 +214,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
 
             // SHADING SHOWCASE: once realistic, the surface keeps cycling through materials
             // (copper -> gold -> chrome -> pearl -> obsidian -> ...), each held then crossfaded.
-            float ph = max(0.0, t - 14.0) / 5.0;                      // one material every ~5s
+            float ph = max(0.0, t - 8.0) / 5.0;                       // hold white through the morph, then one material every ~5s
             int   i0 = int(mod(floor(ph),         float(NMAT)));
             int   i1 = int(mod(floor(ph) + 1.0,   float(NMAT)));
             float k  = smoothstep(0.55, 1.0, fract(ph));              // hold ~55%, then quick crossfade
