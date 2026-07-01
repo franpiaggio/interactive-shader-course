@@ -26,12 +26,20 @@
   input[type=range]::-moz-range-thumb{width:15px;height:15px;border:none;border-radius:50%;background:var(--accent);cursor:pointer;}
   .credit{position:fixed;right:20px;bottom:16px;font:600 12px/1.3 ui-monospace,monospace;}
   .credit a{color:#ffd9a0;text-decoration:none;}
+  /* re-anchor loading overlay (shown while the reference is recomputed to continue) */
+  .load{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;
+    background:rgba(6,9,14,0.72);backdrop-filter:blur(3px);opacity:0;pointer-events:none;transition:opacity .3s;}
+  .load.on{opacity:1;}
+  .spin{width:34px;height:34px;border-radius:50%;border:3px solid rgba(255,255,255,.18);border-top-color:var(--accent);
+    animation:sp .8s linear infinite;}
+  .load span{font:600 12px/1 ui-monospace,monospace;letter-spacing:.18em;color:#9fb4cc;text-transform:uppercase;}
+  @keyframes sp{to{transform:rotate(360deg);}}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="title">Infinite Mandelbrot Zoom<small>perturbation theory · double-double · magnification ~10¹²</small></div>
-  <div class="stage"><canvas id="c"></canvas></div>
+  <div class="title">Infinite Mandelbrot Zoom<small>perturbation theory · re-anchors and never stops</small></div>
+  <div class="stage"><canvas id="c"></canvas><div class="load" id="load"><div class="spin"></div><span>re-anchoring reference…</span></div></div>
   <div class="bar">
     <button class="btn" id="slow" title="back">«</button>
     <button class="btn" id="play" title="play / pause">⏸</button>
@@ -45,7 +53,7 @@
 // Perturbation theory with REBASING (Zhuoran's method): one high-precision reference orbit
 // X_n (JS double, in a float texture) + a small per-pixel delta dz in float. Rebasing keeps
 // it glitch-free and lets the true iteration count exceed the stored reference length.
-#define MAXI 2600
+#define MAXI 1400
 
 vec3 pal(float t){ return 0.5 + 0.5*cos(6.28318530718*(t + vec3(0.0,0.33,0.62))); }
 vec2 cmul(vec2 a, vec2 b){ return vec2(a.x*b.x - a.y*b.y, a.x*b.y + a.y*b.x); }
@@ -140,23 +148,30 @@ function ddMul(a,b){ let [p,e]=twoProd(a[0],b[0]); e+=a[0]*b[1]+a[1]*b[0]; retur
 const CX = [-0.7436438870371587, -3.628952515063387e-17];
 const CY = [ 0.13182590420531198, -1.2892807754956675e-17];
 let refLen = REFN;
-(function computeRef(){
+// tiny dd offsets: each re-anchor nudges the center (within double-double precision) so each
+// dive descends into a slightly different deep structure -> the journey keeps changing.
+const NUDGE = [[0,0],[7e-11,-4e-11],[-5e-11,6e-11],[3e-11,9e-11],[-8e-11,-2e-11]];
+let anchor = 0;
+function computeRef(){
+  const cx = ddAdd(CX, [NUDGE[anchor][0],0]);
+  const cy = ddAdd(CY, [NUDGE[anchor][1],0]);
   const data = new Float32Array(REFN*4);
   let Zx=[0,0], Zy=[0,0], len=REFN;
   for(let i=0;i<REFN;i++){
     data[i*4]=Zx[0]; data[i*4+1]=Zy[0];         // store hi as single float
     const Zx2=ddMul(Zx,Zx), Zy2=ddMul(Zy,Zy);
-    const nZx=ddAdd(ddSub(Zx2,Zy2), CX);
-    const t=ddMul(Zx,Zy); const nZy=ddAdd(ddAdd(t,t), CY);  // 2*Zx*Zy + CY
+    const nZx=ddAdd(ddSub(Zx2,Zy2), cx);
+    const t=ddMul(Zx,Zy); const nZy=ddAdd(ddAdd(t,t), cy);  // 2*Zx*Zy + cy
     Zx=nZx; Zy=nZy;
     if(Zx[0]*Zx[0]+Zy[0]*Zy[0] > 1e8){ len=i+1; break; }
   }
   gl.bindTexture(gl.TEXTURE_2D, refTex);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, REFN, 1, 0, gl.RGBA, gl.FLOAT, data);
   refLen = len;
-})();
+}
+computeRef();
 
-const ZMIN = 0.0, ZMAX = 16.0;   // double-double reference; MAXI resolves the exterior here
+const ZMIN = 0.0, ZMAX = 11.0;   // dive to ~10^9 per cycle (light + smooth), then re-anchor
 let zoom = 0.0, paused = false;
 let speedUI = 0.34;
 function curSpeed(){ return speedUI * 0.75; }
@@ -173,13 +188,24 @@ function resize(){ const dpr=Math.min(devicePixelRatio||1, 1.2);
   canvas.height = Math.max(2, Math.floor(stage.clientHeight*dpr)); }
 resize(); addEventListener('resize', resize);
 
+// re-anchor (frame-based, robust): at the depth limit, hold a short loading beat, recompute
+// the reference (nudged to a new spot) + reset the scale mid-beat, then keep going -> never stops.
+const loadEl = document.getElementById('load');
+let loadTimer = 0;
+
 const t0 = performance.now(); let last = t0;
 function frame(now){
   const dt = Math.min((now-last)/1000, 0.05); last = now;
   if(!paused){
-    zoom += curSpeed()*dt;
-    if(zoom > ZMAX) zoom = ZMAX;
-    if(zoom < ZMIN) zoom = ZMIN;
+    if(loadTimer > 0){
+      loadTimer--;
+      if(loadTimer === 22){ anchor = (anchor+1)%NUDGE.length; computeRef(); zoom = ZMIN; }  // recompute, hidden by the overlay
+      if(loadTimer === 0){ loadEl.classList.remove('on'); }
+    } else {
+      zoom += curSpeed()*dt;
+      if(zoom >= ZMAX && curSpeed() > 0){ zoom = ZMAX; loadTimer = 46; loadEl.classList.add('on'); }  // hit the limit -> re-anchor
+      if(zoom < ZMIN) zoom = ZMIN;
+    }
   }
   const scale = 1.5 * Math.pow(0.16, zoom);
   gl.useProgram(prog);
