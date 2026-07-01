@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Quaternion Julia — 3D</title>
+<style>
+  html,body{margin:0;height:100%;background:#05060a;overflow:hidden;cursor:grab;}
+  body.drag{cursor:grabbing;}
+  canvas{display:block;width:100vw;height:100vh;}
+  .hud{position:fixed;left:22px;top:18px;color:#eef;font:600 14px/1.5 ui-monospace,"SF Mono",Menlo,monospace;
+    letter-spacing:.03em;text-shadow:0 2px 8px #000;pointer-events:none;}
+  .hud .tag{background:#8fd0ff;color:#06121f;padding:4px 10px;border-radius:7px;}
+  .hint{position:fixed;left:0;right:0;bottom:26px;text-align:center;color:#cfd4e2;
+    font:500 15px/1.4 Helvetica,Arial,sans-serif;text-shadow:0 2px 10px #000;pointer-events:none;transition:opacity .8s;}
+  .credit{position:fixed;right:22px;bottom:18px;font:600 12px/1.3 ui-monospace,monospace;}
+  .credit a{color:#bfe3ff;text-decoration:none;pointer-events:auto;text-shadow:0 2px 8px #000;}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="hud"><span class="tag">q → q² + c</span> &nbsp;Quaternion Julia (4D sliced to 3D)</div>
+<div class="hint" id="hint">drag to orbit · scroll to zoom · it slowly morphs on its own</div>
+<div class="credit"><a href="https://franpiaggio.github.io/interactive-shader-course/" target="_blank">learn how → interactive-shader-course</a></div>
+
+<script id="frag" type="x-shader/fragment">
+// Quaternion Julia set: iterate q -> q^2 + c in 4D, slice w = const to get a 3D surface.
+// Distance estimate via the running derivative (Hart / iquilezles method).
+#define STEPS 140
+#define NITER 64
+
+vec4 qsqr(vec4 q){ return vec4(q.x*q.x - dot(q.yzw,q.yzw), 2.0*q.x*q.yzw); }
+
+// distance estimate; also returns an orbit-trap value in .y (min |q| along the orbit)
+vec2 deTrap(vec3 p){
+  vec4 z = vec4(p, uSliceW);
+  float md2 = 1.0;            // running |dz|^2  (dz starts at 1)
+  float mz2 = dot(z,z);
+  float trap = 1e10;
+  for(int i=0;i<NITER;i++){
+    md2 *= 4.0*mz2;           // |dz|^2 update:  dz -> 2 z dz
+    z = qsqr(z) + uC;         // q -> q^2 + c
+    mz2 = dot(z,z);
+    trap = min(trap, length(z.xzw));   // trap on a plane for coloring
+    if(mz2 > 12.0) break;
+  }
+  float d = 0.25 * sqrt(mz2/md2) * log(mz2);   // distance
+  return vec2(d, trap);
+}
+float de(vec3 p){ return deTrap(p).x; }
+
+vec3 calcNormal(vec3 p){
+  vec2 e = vec2(1.0, -1.0) * 0.0006;
+  return normalize(
+    e.xyy*de(p+e.xyy) + e.yyx*de(p+e.yyx) +
+    e.yxy*de(p+e.yxy) + e.xxx*de(p+e.xxx));
+}
+
+// soft shadow toward a light
+float softShadow(vec3 ro, vec3 rd, float k){
+  float res = 1.0, t = 0.02;
+  for(int i=0;i<28;i++){
+    float h = de(ro + rd*t);
+    if(h < 0.0002) return 0.0;
+    res = min(res, k*h/t);
+    t += clamp(h, 0.01, 0.2);
+    if(t > 5.0) break;
+  }
+  return clamp(res, 0.0, 1.0);
+}
+
+vec3 pal(float t){ return 0.5 + 0.5*cos(6.28318*(t + vec3(0.0,0.33,0.62))); }
+
+vec3 aces(vec3 x){ return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14),0.0,1.0); }
+
+void mainImage(out vec4 o, in vec2 fc){
+  vec2 uv = (fc - 0.5*iResolution.xy)/iResolution.y;
+
+  // camera basis from orbit uniforms
+  vec3 ro = uCamPos;
+  vec3 fw = normalize(-ro);
+  vec3 rt = normalize(cross(fw, vec3(0.0,1.0,0.0)));
+  vec3 up = cross(rt, fw);
+  vec3 rd = normalize(fw*1.5 + uv.x*rt + uv.y*up);
+
+  // raymarch
+  float t = 0.0; bool hit = false;
+  for(int i=0;i<STEPS;i++){
+    vec3 p = ro + rd*t;
+    float d = de(p);
+    if(d < 0.00035*t + 0.00025){ hit = true; break; }
+    t += d;
+    if(t > 8.0) break;
+  }
+
+  vec3 col;
+  vec3 bg = mix(vec3(0.02,0.03,0.06), vec3(0.05,0.07,0.12), 0.5+0.5*uv.y);
+  if(hit){
+    vec3 p = ro + rd*t;
+    vec3 n = calcNormal(p);
+    float trap = deTrap(p).y;
+
+    vec3 lp = normalize(vec3(0.7,0.85,0.5));
+    float dif = max(dot(n, lp), 0.0);
+    float sh = softShadow(p + n*0.002, lp, 16.0);
+    float rim = pow(1.0 - max(dot(n, -rd), 0.0), 3.0);
+    float fres = pow(1.0 - max(dot(n, -rd), 0.0), 5.0);
+    float amb = 0.35 + 0.35*n.y;                 // hemispheric ambient
+
+    vec3 base = pal(trap*0.9 + 0.1);             // orbit-trap coloring
+    base = mix(base, vec3(0.9), 0.15);
+
+    col  = base * (amb*vec3(0.35,0.42,0.55));
+    col += base * dif * sh * vec3(1.25,1.12,0.9);
+    col += rim * vec3(0.4,0.55,0.8) * 0.5;
+    col += fres * vec3(0.6,0.7,1.0) * 0.35;
+  } else {
+    col = bg;
+  }
+
+  col = aces(col*1.15);
+  col = pow(col, vec3(0.4545));
+  o = vec4(col, 1.0);
+}
+</script>
+
+<script>
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2', {antialias:false});
+if(!gl){ document.body.innerHTML = '<p style="color:#fff;font-family:sans-serif;padding:2rem">WebGL2 not supported.</p>'; }
+
+const VERT = `#version 300 es
+in vec2 aPos; void main(){ gl_Position=vec4(aPos,0.0,1.0); }`;
+const PRE = `#version 300 es
+precision highp float;
+uniform vec3 iResolution; uniform float iTime;
+uniform vec3 uCamPos; uniform vec4 uC; uniform float uSliceW;
+out vec4 _fragColor;
+`;
+const POST = `\nvoid main(){ mainImage(_fragColor, gl_FragCoord.xy); }`;
+function sh(t,s){ const x=gl.createShader(t); gl.shaderSource(x,s); gl.compileShader(x);
+  if(!gl.getShaderParameter(x,gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(x)); return x; }
+const prog = gl.createProgram();
+gl.attachShader(prog, sh(gl.VERTEX_SHADER, VERT));
+gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, PRE + document.getElementById('frag').textContent + POST));
+gl.bindAttribLocation(prog, 0, 'aPos'); gl.linkProgram(prog); gl.useProgram(prog);
+if(!gl.getProgramParameter(prog, gl.LINK_STATUS)) console.error(gl.getProgramInfoLog(prog));
+const b=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,b);
+gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0,2,gl.FLOAT,false,0,0);
+const U = n => gl.getUniformLocation(prog,n);
+const uRes=U('iResolution'), uTime=U('iTime'), uCamPos=U('uCamPos'), uC=U('uC'), uSliceW=U('uSliceW');
+
+// ---- orbit camera state ----------------------------------------------------
+let yaw = 0.6, pitch = 0.35, radius = 3.4;
+let vYaw = 0, vPitch = 0;                 // inertia
+let dragging = false, lastX = 0, lastY = 0;
+const hint = document.getElementById('hint');
+
+canvas.addEventListener('pointerdown', e => { dragging = true; lastX=e.clientX; lastY=e.clientY;
+  document.body.classList.add('drag'); hint.style.opacity='0'; canvas.setPointerCapture(e.pointerId); });
+canvas.addEventListener('pointermove', e => {
+  if(!dragging) return;
+  const dx = (e.clientX-lastX)/innerHeight, dy = (e.clientY-lastY)/innerHeight;
+  lastX=e.clientX; lastY=e.clientY;
+  yaw -= dx*3.0; pitch += dy*3.0;
+  pitch = Math.max(-1.4, Math.min(1.4, pitch));
+  vYaw = -dx*3.0; vPitch = dy*3.0;
+});
+addEventListener('pointerup', e => { dragging=false; document.body.classList.remove('drag'); });
+canvas.addEventListener('wheel', e => { e.preventDefault();
+  radius = Math.max(1.9, Math.min(6.0, radius * (e.deltaY>0 ? 1.08 : 0.92))); }, {passive:false});
+
+function resize(){ const dpr=Math.min(devicePixelRatio||1, 1.25);
+  canvas.width=Math.floor(innerWidth*dpr); canvas.height=Math.floor(innerHeight*dpr); }
+resize(); addEventListener('resize', resize);
+
+const t0 = performance.now();
+function frame(now){
+  const t = (now-t0)/1000;
+  if(!dragging){                          // inertia coast + gentle auto-spin
+    yaw += vYaw + 0.0016;
+    pitch = Math.max(-1.4, Math.min(1.4, pitch + vPitch));
+    vYaw *= 0.94; vPitch *= 0.94;
+  }
+  const cp = Math.cos(pitch), sp = Math.sin(pitch), cy = Math.cos(yaw), sy = Math.sin(yaw);
+  const cam = [radius*cp*sy, radius*sp, radius*cp*cy];
+
+  // detailed budded quaternion constant, mutating slowly around it (like the 2D Julia)
+  const c = [
+    -0.450 + 0.028*Math.cos(t*0.30),
+    -0.447 + 0.028*Math.cos(t*0.37 + 1.0),
+     0.181 + 0.028*Math.cos(t*0.31 + 2.0),
+     0.306 + 0.028*Math.cos(t*0.27 + 3.0)
+  ];
+
+  gl.useProgram(prog);
+  gl.viewport(0,0,canvas.width,canvas.height);
+  gl.uniform3f(uRes, canvas.width, canvas.height, 1);
+  gl.uniform1f(uTime, t);
+  gl.uniform3f(uCamPos, cam[0], cam[1], cam[2]);
+  gl.uniform4f(uC, c[0], c[1], c[2], c[3]);
+  gl.uniform1f(uSliceW, 0.0);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
