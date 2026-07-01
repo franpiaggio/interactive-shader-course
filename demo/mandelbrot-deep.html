@@ -118,25 +118,32 @@ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
-const CX = -0.77568377, CY = 0.13646737;   // a Misiurewicz point: self-similar spirals on the
-                                           // boundary forever -> stays colorful, never goes all black
 let refLen = REFN;
-(function computeRef(){
+function computeRef(cx, cy){
   const data = new Float32Array(REFN*4);
   let zx=0, zy=0, len=REFN;
   for(let i=0;i<REFN;i++){
     data[i*4]=zx; data[i*4+1]=zy;
-    const nx=zx*zx-zy*zy+CX, ny=2*zx*zy+CY; zx=nx; zy=ny;
+    const nx=zx*zx-zy*zy+cx, ny=2*zx*zy+cy; zx=nx; zy=ny;
     if(zx*zx+zy*zy>1e8){ len=i+1; break; }
   }
   gl.bindTexture(gl.TEXTURE_2D, refTex);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, REFN, 1, 0, gl.RGBA, gl.FLOAT, data);
   refLen = len;
-})();
+}
 
-// ---- continuous ping-pong dive (no black, no cuts) ------------------------
-const ZMIN = 4.0, ZMAX = 9.5;   // cap depth where NMAX iterations still resolve the exterior
-let zoom = ZMIN, dir = 1, paused = false;
+// ---- a TOUR of different places in the set (each dives in, then out, then the next).
+// All points are on the boundary and stay colorful to the given depth (never all-black). ----
+const TOUR = [
+  {cx:-0.77568377,  cy:0.13646737,  zmax:9.2},   // spiral
+  {cx:-0.10109636,  cy:0.95628651,  zmax:8.4},   // dendrite / lightning
+  {cx:-1.25066,     cy:0.02012,     zmax:8.0},   // mini-mandelbrot on the antenna
+  {cx:-0.74364388,  cy:0.13182590,  zmax:6.6},   // seahorse valley
+  {cx:-0.7458300,   cy:0.1129000,   zmax:8.2},   // double spirals
+];
+const ZBASE = 3.6;              // switch places at this depth (still colorful, gentle reframe)
+let ti = 0, zoom = ZBASE, dir = 1, paused = false;
+computeRef(TOUR[ti].cx, TOUR[ti].cy);
 let speedUI = 0.38;                       // 0..1 from the slider
 function curSpeed(){ return 0.15 + speedUI*1.6; }   // zoom units / second
 
@@ -155,8 +162,12 @@ function frame(now){
   const dt = Math.min((now-last)/1000, 0.05); last = now;
   if(!paused){
     zoom += curSpeed()*dir*dt;
-    if(zoom >= ZMAX){ zoom = ZMAX; dir = -1; }   // turn around smoothly (no cut, no black)
-    if(zoom <= ZMIN){ zoom = ZMIN; dir =  1; }
+    if(dir > 0 && zoom >= TOUR[ti].zmax){ zoom = TOUR[ti].zmax; dir = -1; }   // reached the depth -> pull out
+    if(dir < 0 && zoom <= ZBASE){                                            // back out -> next place
+      zoom = ZBASE; dir = 1;
+      ti = (ti+1) % TOUR.length;
+      computeRef(TOUR[ti].cx, TOUR[ti].cy);
+    }
   }
   const scale = 1.6 * Math.pow(0.16, zoom);
 
