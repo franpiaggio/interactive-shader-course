@@ -31,8 +31,8 @@
 
 <script id="frag" type="x-shader/fragment">
 // Classic Mandelbrot (plain float): z -> z^2 + c, colored by escape speed. Simple and light.
-#define ITER 600
-#define AA 2
+#define ITER 420
+#define AA 1
 
 vec3 pal(float t){ return 0.5 + 0.5*cos(6.28318530718*(t + vec3(0.0,0.33,0.62))); }
 vec2 cmul(vec2 a, vec2 b){ return vec2(a.x*b.x - a.y*b.y, a.x*b.y + a.y*b.x); }
@@ -117,7 +117,7 @@ document.getElementById('fast').onclick = () => { const s=document.getElementByI
 document.getElementById('spd').addEventListener('input', e => { speedUI = e.target.value/100; });
 playBtn.onclick = () => { paused = !paused; playBtn.textContent = paused ? '▶' : '⏸'; };
 
-function resize(){ const dpr=Math.min(devicePixelRatio||1, 1.5);
+function resize(){ const dpr=Math.min(devicePixelRatio||1, 1.25);
   canvas.width=Math.floor(innerWidth*dpr); canvas.height=Math.floor(innerHeight*dpr); }
 resize(); addEventListener('resize', resize);
 
