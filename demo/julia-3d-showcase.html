@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Quaternion Julia — showcase</title>
+<style>
+  html,body{margin:0;height:100%;background:#04050a;overflow:hidden;cursor:grab;}
+  body.grabbing{cursor:grabbing;}
+  canvas{display:block;width:100vw;height:100vh;}
+  #err{position:fixed;left:0;top:0;right:0;color:#ff8080;background:#1a0000;
+    font:12px/1.5 ui-monospace,monospace;padding:8px 12px;white-space:pre-wrap;display:none}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<pre id="err"></pre>
+
+<script id="frag" type="x-shader/x-fragment">
+#define TAU 6.28318530718
+#define PI  3.14159265359
+#define NITER 44        // quaternion Julia iterations
+#define STEPS 170
+#define FAR 9.0
+
+mat2 rot(float a){ float c=cos(a), s=sin(a); return mat2(c,-s,s,c); }
+
+// --- physically based shading helpers (Cook-Torrance GGX) for the realistic finish ---
+float ggxD(float NoH, float a){ float a2=a*a; float d=NoH*NoH*(a2-1.0)+1.0; return a2/(PI*d*d + 1e-7); }
+float ggxG(float NoV, float NoL, float a){ float k=a*0.5; float gv=NoV/(NoV*(1.0-k)+k); float gl=NoL/(NoL*(1.0-k)+k); return gv*gl; }
+vec3  fresSch(float c, vec3 F0){ return F0 + (1.0-F0)*pow(1.0-c, 5.0); }
+vec3  fresSchR(float c, vec3 F0, float r){ return F0 + (max(vec3(1.0-r), F0)-F0)*pow(1.0-c, 5.0); }
+// ACES filmic tonemap (Narkowicz approximation) -> realistic highlight rolloff
+vec3 aces(vec3 x){ return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14), 0.0, 1.0); }
+
+// material presets for the shading showcase.
+//   alb = albedo, met = metallic, rgh = roughness
+//   fx  = special-effect amounts: x = thin-film iridescence, y = subsurface, z = glass/gem
+void material(int i, out vec3 alb, out float met, out float rgh, out vec3 fx){
+    alb = vec3(0.8); met = 1.0; rgh = 0.2; fx = vec3(0.0);
+    if      (i==0){ alb=vec3(0.86,0.56,0.34); met=0.92; rgh=0.22; }                        // copper / bronze
+    else if (i==1){ alb=vec3(1.00,0.78,0.34); met=1.00; rgh=0.15; }                        // gold
+    else if (i==2){ alb=vec3(0.96,0.66,0.56); met=1.00; rgh=0.20; }                        // rose gold
+    else if (i==3){ alb=vec3(0.95,0.96,1.00); met=1.00; rgh=0.05; }                        // chrome / silver
+    else if (i==4){ alb=vec3(0.30,0.32,0.38); met=1.00; rgh=0.34; }                        // gunmetal (blued steel)
+    else if (i==5){ alb=vec3(0.60,0.60,0.62); met=1.00; rgh=0.10; fx=vec3(1.0,0.0,0.0); }  // thin-film iridescent (titanium)
+    else if (i==6){ alb=vec3(0.13,0.45,0.30); met=0.00; rgh=0.26; fx=vec3(0.0,1.0,0.0); }  // jade (subsurface)
+    else if (i==7){ alb=vec3(0.72,0.05,0.12); met=0.00; rgh=0.06; fx=vec3(0.0,0.0,1.0); }  // ruby glass
+    else if (i==8){ alb=vec3(0.32,0.55,0.46); met=0.35; rgh=0.55; }                        // verdigris (oxidised copper)
+    else if (i==9){ alb=vec3(0.93,0.90,0.86); met=0.00; rgh=0.34; }                        // pearl / white marble
+    else          { alb=vec3(0.045,0.05,0.07); met=0.00; rgh=0.07; }                       // obsidian / volcanic glass
+}
+#define NMAT 11
+
+// --- smooth 1D value noise, used to WANDER the morph params instead of sin() ---
+// sin() is a pendulum (retraces its path); noise drifts forward and never returns to
+// the same configuration -> endless, non-repeating mutation.
+float h11(float n){ return fract(sin(n)*43758.5453123); }
+float vnoise(float x){ float i=floor(x), f=fract(x); f=f*f*(3.0-2.0*f); return mix(h11(i), h11(i+1.0), f); }
+float wander(float x){ return 0.65*vnoise(x) + 0.35*vnoise(x*2.03 + 11.7); }   // ~[0,1]
+float wsign(float x){ return wander(x)*2.0 - 1.0; }                            // ~[-1,1]
+
+// iridescent jewel palette: teal -> blue -> violet -> magenta -> amber (deepened mids)
+vec3 pal(float t){
+    vec3 c = 0.5 + 0.5*cos(TAU*(t + vec3(0.0,0.12,0.32)));
+    return c*c*(3.0 - 2.0*c);
+}
+
+float h31(vec3 p){ p = fract(p*0.1031); p += dot(p, p.yzx + 33.33); return fract((p.x + p.y)*p.z); }
+
+vec3 cosmos(vec3 rd, float t){
+    vec3 c = mix(vec3(0.005,0.006,0.014), vec3(0.010,0.009,0.028), 0.5+0.5*rd.y);
+    float n1 = smoothstep(0.95, -0.1, length(rd.xy - 0.30*vec2(sin(t*0.030), cos(t*0.041))));
+    float n2 = smoothstep(1.05, -0.05, length(rd.xz - 0.40*vec2(cos(t*0.025), sin(t*0.034))));
+    c += pal(0.55)*n1*0.040 + pal(0.20)*n2*0.030;
+    for(int i=0;i<3;i++){
+        float sc = 55.0 + 65.0*float(i);
+        vec3 gp = rd*sc;
+        vec3 id = floor(gp);
+        float rnd = h31(id);
+        vec3 off = (vec3(h31(id+1.7), h31(id+5.3), h31(id+9.1)) - 0.5)*0.7;
+        float dpt = length(fract(gp) - 0.5 - off);
+        float star = step(0.80, rnd) * smoothstep(0.09, 0.0, dpt);
+        float tw = 0.5 + 0.5*sin(t*3.0 + rnd*40.0);
+        c += star * tw * (1.1 - 0.28*float(i));
+    }
+    return c;
+}
+
+float gTrap;   // orbit trap: nearest approach of the orbit (for iridescent colour)
+
+vec4 qsqr(vec4 q){ return vec4(q.x*q.x - dot(q.yzw,q.yzw), 2.0*q.x*q.yzw); }
+
+// Quaternion Julia distance estimator: iterate q -> q^2 + c in 4D, slice w=0 -> 3D.
+float map(vec3 p){
+    // the quaternion constant WANDERS via noise (never oscillates back), each component on
+    // its own clock, so the 4D shape keeps drifting into new configurations forever.
+    vec4 c = vec4(
+        -0.45 + 0.075*wsign(iTime*0.05 + 0.0),
+        -0.45 + 0.075*wsign(iTime*0.05 + 17.0),
+         0.18 + 0.075*wsign(iTime*0.05 + 31.0),
+         0.30 + 0.075*wsign(iTime*0.05 + 41.0)
+    );
+
+    vec4 z = vec4(p, 0.0);
+    float md2 = 1.0;            // running |dz|^2  (dz starts at 1)
+    float mz2 = dot(z,z);
+    float trap = 1e9;
+    for(int i=0;i<NITER;i++){
+        md2 *= 4.0*mz2;         // |dz|^2 update: dz -> 2 z dz
+        z = qsqr(z) + c;        // q -> q^2 + c
+        mz2 = dot(z,z);
+        trap = min(trap, length(z.xzw));   // nearest approach -> colour
+        if(mz2 > 12.0) break;
+    }
+    gTrap = trap;
+    float dF = 0.25*sqrt(mz2/md2)*log(mz2);   // the fractal distance estimate
+
+    // INTRO MORPH: start as a clean sphere and deform into the fractal over the first
+    // ~6s (one time), then the noise-wander above keeps it mutating forever.
+    float dS = length(p) - 1.15;       // the simple starting shape
+    float build = smoothstep(0.4, 6.5, iTime);
+    return mix(dS, dF, build);
+}
+
+vec3 calcNormal(vec3 p){
+    const vec2 k = vec2(1.0, -1.0);
+    const float e = 0.0010;
+    return normalize(
+        k.xyy*map(p + k.xyy*e) +
+        k.yyx*map(p + k.yyx*e) +
+        k.yxy*map(p + k.yxy*e) +
+        k.xxx*map(p + k.xxx*e));
+}
+
+float calcAO(vec3 p, vec3 n){
+    float ao = 0.0, sca = 1.0;
+    for(int i=0;i<5;i++){
+        float h = 0.008 + 0.10*float(i)/4.0;
+        ao += (h - map(p + n*h))*sca;
+        sca *= 0.7;
+    }
+    return clamp(1.0 - 2.4*ao, 0.0, 1.0);
+}
+
+// raymarched soft shadow -> contact shadows in the crevices (a big realism cue)
+float softShadow(vec3 ro, vec3 rd, float k){
+    float res = 1.0, t = 0.02;
+    for(int i=0;i<18;i++){
+        float h = map(ro + rd*t);
+        if(h < 0.0008) return 0.0;
+        res = min(res, k*h/t);
+        t += clamp(h, 0.012, 0.18);
+        if(t > 3.5) break;
+    }
+    return clamp(res, 0.0, 1.0);
+}
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord){
+    vec2 uv = (fragCoord - 0.5*iResolution.xy)/iResolution.y;
+    float t = iTime;
+
+    // OrbitControls-style camera (yaw/pitch accumulate in JS; uDist = scroll/pinch zoom).
+    // When idle (uIdle->1) a gentle cinematic drift eases in: a slow pitch bob + a slow
+    // dolly, both noise-driven so they never feel like a loop -> showcase-ready motion.
+    float az = uYaw;
+    float el = uPitch + uIdle*0.13*wsign(iTime*0.028 + 20.0);
+    float camR = uDist + uIdle*0.70*wander(iTime*0.022 + 33.0);
+    vec3 ro = camR * vec3(cos(el)*sin(az), sin(el), cos(el)*cos(az));
+
+    vec3 fwd = normalize(vec3(0.0)-ro);
+    vec3 rgt = normalize(cross(vec3(0,1,0), fwd));
+    vec3 up  = cross(fwd, rgt);
+    vec3 rd  = normalize(uv.x*rgt + uv.y*up + 1.30*fwd);
+
+    float d=0.0, tt=0.0; bool hit=false; vec3 hp;
+    for(int i=0;i<STEPS;i++){
+        hp = ro + rd*tt;
+        d  = map(hp);
+        float eps = 0.0006 + 0.0008*tt;
+        if(d<eps){ hit=true; break; }
+        tt += d*0.85;                  // conservative (the sphere->fractal blend isn't an exact DE)
+        if(tt>FAR) break;
+    }
+
+    vec3 col = cosmos(rd, t);
+    float gReal = 0.0;   // 0 = iridescent, 1 = realistic material (crossfades near the end)
+
+    if(hit){
+        vec3 n   = calcNormal(hp);
+        float ao = calcAO(hp, n);
+        float fres = pow(1.0 - max(dot(n,-rd),0.0), 2.5);
+
+        vec3 keyDir = normalize(vec3(0.5,0.7,0.45));
+        float dif = max(dot(n, keyDir), 0.0);
+        float amb = 0.18 + 0.20*n.y;
+
+        // iridescent colour from the orbit trap, hue drifting in time + toward the edges
+        float tc  = fract(gTrap*1.3 + 0.10*t);
+        vec3 base = pal(tc);
+        vec3 irid = pal(tc + 0.18 + 0.30*fres);
+        vec3 colIrid  = base * ao * (0.16*amb + 0.95*dif);
+        colIrid += irid * fres * 0.72;                           // iridescent rim
+        colIrid += vec3(0.85,0.92,1.0) * pow(fres,5.0) * 0.30;   // cool white-hot edge
+        colIrid += base * 0.07;                                  // inner self-glow
+
+        // --- realistic finish (settles into this at the end): full PBR (Cook-Torrance GGX),
+        //     image-based fill from the cosmos, soft contact shadows. ---
+        float real = smoothstep(11.0, 17.0, t);
+        vec3 colReal = colIrid;
+        if(real > 0.001){
+            vec3 V = -rd;
+            vec3 R = reflect(rd, n);
+            float NoV = max(dot(n, V), 1e-4);
+
+            // SHADING SHOWCASE: once realistic, the surface keeps cycling through materials
+            // (copper -> gold -> chrome -> pearl -> obsidian -> ...), each held then crossfaded.
+            float ph = max(0.0, t - 14.0) / 5.0;                      // one material every ~5s
+            int   i0 = int(mod(floor(ph),         float(NMAT)));
+            int   i1 = int(mod(floor(ph) + 1.0,   float(NMAT)));
+            float k  = smoothstep(0.55, 1.0, fract(ph));              // hold ~55%, then quick crossfade
+            vec3  a0,a1,fx0,fx1; float m0,m1,r0,r1;
+            material(i0, a0,m0,r0, fx0);
+            material(i1, a1,m1,r1, fx1);
+            vec3  albedo   = mix(a0, a1, k);
+            float metallic = mix(m0, m1, k);
+            float rough    = clamp(mix(r0, r1, k) + 0.12*(1.0-ao), 0.03, 0.9);  // crevices read rougher
+            vec3  fx       = mix(fx0, fx1, k);                        // x=iridescence, y=subsurface, z=glass
+            vec3  F0       = mix(vec3(0.04), albedo, metallic);
+
+            // thin-film iridescence: tint the reflectance with an angle-dependent hue
+            vec3 iridF = 0.55 + 0.45*cos(TAU*((1.0-NoV)*4.0 + vec3(0.0,0.33,0.67)));
+            F0 = mix(F0, iridF, fx.x);
+
+            // key light: a warm sun, with raymarched soft shadow
+            vec3  Ldir = normalize(vec3(0.55, 0.62, 0.40));
+            vec3  Lcol = vec3(1.0, 0.94, 0.82) * 3.2;
+            vec3  H    = normalize(V + Ldir);
+            float NoL  = max(dot(n, Ldir), 0.0);
+            float NoH  = max(dot(n, H), 0.0);
+            float VoH  = max(dot(V, H), 0.0);
+            float a    = rough*rough;
+            float D    = ggxD(NoH, a);
+            float G    = ggxG(NoV, NoL, a);
+            vec3  Fs   = fresSch(VoH, F0);
+            vec3  spec = (D*G*Fs) / (4.0*NoV*NoL + 1e-4);
+            vec3  kd   = (1.0 - Fs) * (1.0 - metallic);
+            float sh   = softShadow(hp + n*0.012, Ldir, 14.0);
+            vec3  direct = (kd*albedo/PI + spec) * Lcol * NoL * sh;
+
+            // cool rim/fill light from the opposite side (no shadow) so the dark side reads
+            vec3  Fdir = normalize(vec3(-0.5, 0.1, -0.6));
+            vec3  fill = albedo * max(dot(n, Fdir), 0.0) * vec3(0.10,0.14,0.22) * (1.0-metallic);
+
+            // image-based lighting: specular reflects the starscape; diffuse irradiance from sky
+            vec3  Fr     = fresSchR(NoV, F0, rough);
+            vec3  envSpec= cosmos(R, t) * (1.0 + 2.5*rough);
+            vec3  envDiff= (cosmos(n, t) + vec3(0.020,0.024,0.045));
+            vec3  ambient= (envDiff*albedo*(1.0-metallic) + envSpec*Fr) * ao;
+
+            colReal = direct + fill + ambient;
+            colReal += vec3(1.0,0.93,0.82) * pow(1.0-NoV, 5.0) * 0.06; // faint grazing glow
+
+            // thin-film sheen across the body + stronger rim
+            colReal += iridF * (pow(1.0-NoV, 1.3)*0.55 + 0.18*ao) * fx.x;
+
+            // jade subsurface: soft inner glow + edge translucency + wrapped light
+            float wrap = clamp((dot(n,Ldir)+0.5)/1.5, 0.0, 1.0);
+            colReal += albedo * (pow(1.0-NoV,1.5)*0.55 + 0.14 + wrap*0.25) * fx.y;
+
+            // glass gem: saturated transmitted body + bright glassy reflection + glint
+            vec3 gem = albedo*(0.30 + 0.55*NoV) + envSpec*Fr*1.3 + vec3(1.0)*pow(NoH,160.0)*0.7;
+            colReal = mix(colReal, gem, fx.z);
+        }
+
+        col = mix(colIrid, colReal, real);
+        gReal = real;
+    }
+
+    // ACES filmic tonemap + gamma
+    col = aces(col);
+    col = pow(col, vec3(0.4545));
+    float sat = mix(1.12, 1.02, gReal);
+    col = mix(vec3(dot(col, vec3(0.299,0.587,0.114))), col, sat);
+    col *= 1.0 - 0.40*dot(uv,uv);
+    fragColor = vec4(col, 1.0);
+}
+</script>
+
+<script>
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2');
+const errBox = document.getElementById('err');
+function showErr(msg){ errBox.style.display='block'; errBox.textContent = msg; }
+
+const VERT = `#version 300 es
+in vec2 p; void main(){ gl_Position = vec4(p,0.0,1.0); }`;
+const FRAG_HEADER = `#version 300 es
+precision highp float;
+uniform vec3  iResolution;
+uniform float iTime;
+uniform float uYaw;
+uniform float uPitch;
+uniform float uDist;
+uniform float uIdle;
+out vec4 outColor;
+`;
+const FRAG_FOOTER = `
+void main(){ mainImage(outColor, gl_FragCoord.xy); }`;
+
+function compile(type, src){
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if(!gl.getShaderParameter(s, gl.COMPILE_STATUS)){ showErr('Shader error:\n' + gl.getShaderInfoLog(s)); return null; }
+  return s;
+}
+
+const fragSrc = FRAG_HEADER + document.getElementById('frag').textContent + FRAG_FOOTER;
+const prog = gl.createProgram();
+gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT));
+gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, fragSrc));
+gl.bindAttribLocation(prog, 0, 'p');
+gl.linkProgram(prog);
+gl.useProgram(prog);
+
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0);
+gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+const uRes   = gl.getUniformLocation(prog, 'iResolution');
+const uTime  = gl.getUniformLocation(prog, 'iTime');
+const uYaw   = gl.getUniformLocation(prog, 'uYaw');
+const uPitch = gl.getUniformLocation(prog, 'uPitch');
+const uDist  = gl.getUniformLocation(prog, 'uDist');
+const uIdle  = gl.getUniformLocation(prog, 'uIdle');
+
+// ---- OrbitControls-style camera: drag to spin, release to coast, idle auto-spin,
+//      scroll / pinch to zoom. ----
+let yaw = 0.7, pitch = 0.30;
+let vYaw = 0.0, vPitch = 0.0;
+let dist = 3.4;
+let dragging = false, lastX = 0, lastY = 0;
+let idle = 1.0;                  // eased 0..1: 1 = cinematic drift on, 0 = user in control
+const SENS = 0.006, DAMP = 0.93, AUTO = 0.00156, PITCH_LIMIT = 1.45;
+const TIMESCALE = 1.3;          // 30% faster: scales all shader time (morph, transitions, cycle)
+const D_MIN = 2.0, D_MAX = 6.5;
+
+function clamp(v,a,b){ return Math.min(b, Math.max(a, v)); }
+function interact(){ idle = 0.0; }   // any input drops the cinematic drift; it eases back
+
+canvas.addEventListener('pointerdown', e => {
+  dragging = true; lastX = e.clientX; lastY = e.clientY;
+  vYaw = 0; vPitch = 0; interact();
+  document.body.classList.add('grabbing');
+  canvas.setPointerCapture && canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointermove', e => {
+  if (!dragging) return;
+  const dx = e.clientX - lastX, dy = e.clientY - lastY;
+  lastX = e.clientX; lastY = e.clientY;
+  vYaw = -dx * SENS; vPitch = dy * SENS;
+  yaw += vYaw; pitch += vPitch;
+  pitch = clamp(pitch, -PITCH_LIMIT, PITCH_LIMIT);
+});
+function endDrag(){ dragging = false; document.body.classList.remove('grabbing'); }
+canvas.addEventListener('pointerup', endDrag);
+canvas.addEventListener('pointercancel', endDrag);
+canvas.addEventListener('pointerleave', endDrag);
+
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  dist = clamp(dist + e.deltaY * 0.003, D_MIN, D_MAX);
+  interact();
+}, {passive:false});
+
+let pinchD = 0;
+canvas.addEventListener('touchmove', e => {
+  if (e.touches.length === 2){
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    const d = Math.hypot(dx, dy);
+    if (pinchD) dist = clamp(dist + (pinchD - d) * 0.008, D_MIN, D_MAX);
+    pinchD = d;
+  }
+}, {passive:true});
+canvas.addEventListener('touchend', () => { pinchD = 0; });
+
+const QUALITY = 1.75;   // raymarched quaternion Julia is heavy; cap dpr for smoothness
+function resize(){
+  const dpr = Math.min(devicePixelRatio || 1, QUALITY);
+  const w = Math.max(2, innerWidth  * dpr | 0);
+  const h = Math.max(2, innerHeight * dpr | 0);
+  canvas.width = w; canvas.height = h;
+  gl.viewport(0, 0, w, h);
+}
+resize();
+addEventListener('resize', resize);
+
+const t0 = performance.now();
+(function loop(){
+  if (!dragging) {
+    yaw += vYaw; pitch += vPitch;
+    vYaw *= DAMP; vPitch *= DAMP;
+    pitch = clamp(pitch, -PITCH_LIMIT, PITCH_LIMIT);
+  }
+  yaw += AUTO;
+  idle += ((dragging ? 0.0 : 1.0) - idle) * 0.015;   // ease the cinematic drift in/out
+  gl.uniform3f(uRes, canvas.width, canvas.height, 1);
+  gl.uniform1f(uTime, (performance.now() - t0) / 1000 * TIMESCALE);
+  gl.uniform1f(uYaw, yaw);
+  gl.uniform1f(uPitch, pitch);
+  gl.uniform1f(uDist, dist);
+  gl.uniform1f(uIdle, idle);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
