@@ -30,7 +30,7 @@
 </head>
 <body>
 <div class="wrap">
-  <div class="title">Infinite Mandelbrot Zoom<small>perturbation theory · magnification up to 10¹⁰</small></div>
+  <div class="title">Infinite Mandelbrot Zoom<small>perturbation theory · double-double · magnification ~10¹²</small></div>
   <div class="stage"><canvas id="c"></canvas></div>
   <div class="bar">
     <button class="btn" id="slow" title="back">«</button>
@@ -45,7 +45,7 @@
 // Perturbation theory with REBASING (Zhuoran's method): one high-precision reference orbit
 // X_n (JS double, in a float texture) + a small per-pixel delta dz in float. Rebasing keeps
 // it glitch-free and lets the true iteration count exceed the stored reference length.
-#define MAXI 1150
+#define MAXI 2600
 
 vec3 pal(float t){ return 0.5 + 0.5*cos(6.28318530718*(t + vec3(0.0,0.33,0.62))); }
 vec2 cmul(vec2 a, vec2 b){ return vec2(a.x*b.x - a.y*b.y, a.x*b.y + a.y*b.x); }
@@ -123,22 +123,40 @@ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
-const CX = -0.7436438870371587, CY = 0.13182590420531197;   // deep seahorse-valley point
+// ---- double-double arithmetic (two doubles ~= 32 digits) so the reference orbit is
+//      accurate FAR past plain double (~15 digits). The reference is stored as single float
+//      (it's O(1), the delta is relative), but computing it precisely is what unlocks depth. ----
+const DDSPLIT = 134217729;   // 2^27 + 1
+function twoSum(a,b){ const s=a+b, bb=s-a; return [s, (a-(s-bb))+(b-bb)]; }
+function twoProd(a,b){ const p=a*b;
+  const ca=DDSPLIT*a, ah=ca-(ca-a), al=a-ah;
+  const cb=DDSPLIT*b, bh=cb-(cb-b), bl=b-bh;
+  return [p, ((ah*bh-p)+ah*bl+al*bh)+al*bl]; }
+function ddAdd(a,b){ let [s,e]=twoSum(a[0],b[0]); e+=a[1]+b[1]; return twoSum(s,e); }
+function ddSub(a,b){ return ddAdd(a,[-b[0],-b[1]]); }
+function ddMul(a,b){ let [p,e]=twoProd(a[0],b[0]); e+=a[0]*b[1]+a[1]*b[0]; return twoSum(p,e); }
+
+// deep seahorse-valley point, in double-double (hi + lo), from its 33-digit coordinates
+const CX = [-0.7436438870371587, -3.628952515063387e-17];
+const CY = [ 0.13182590420531198, -1.2892807754956675e-17];
 let refLen = REFN;
 (function computeRef(){
   const data = new Float32Array(REFN*4);
-  let zx=0, zy=0, len=REFN;
+  let Zx=[0,0], Zy=[0,0], len=REFN;
   for(let i=0;i<REFN;i++){
-    data[i*4]=zx; data[i*4+1]=zy;
-    const nx=zx*zx-zy*zy+CX, ny=2*zx*zy+CY; zx=nx; zy=ny;
-    if(zx*zx+zy*zy>1e8){ len=i+1; break; }
+    data[i*4]=Zx[0]; data[i*4+1]=Zy[0];         // store hi as single float
+    const Zx2=ddMul(Zx,Zx), Zy2=ddMul(Zy,Zy);
+    const nZx=ddAdd(ddSub(Zx2,Zy2), CX);
+    const t=ddMul(Zx,Zy); const nZy=ddAdd(ddAdd(t,t), CY);  // 2*Zx*Zy + CY
+    Zx=nZx; Zy=nZy;
+    if(Zx[0]*Zx[0]+Zy[0]*Zy[0] > 1e8){ len=i+1; break; }
   }
   gl.bindTexture(gl.TEXTURE_2D, refTex);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, REFN, 1, 0, gl.RGBA, gl.FLOAT, data);
   refLen = len;
 })();
 
-const ZMIN = 0.0, ZMAX = 13.0;
+const ZMIN = 0.0, ZMAX = 16.0;   // double-double reference; MAXI resolves the exterior here
 let zoom = 0.0, paused = false;
 let speedUI = 0.34;
 function curSpeed(){ return speedUI * 0.75; }
@@ -150,7 +168,7 @@ spd.addEventListener('input', e => { speedUI = e.target.value/100; });
 playBtn.onclick = () => { paused = !paused; playBtn.textContent = paused ? '▶' : '⏸'; };
 
 // small window -> few pixels -> smooth even with the heavy per-pixel orbit. Render crisp (dpr up to 2).
-function resize(){ const dpr=Math.min(devicePixelRatio||1, 2);
+function resize(){ const dpr=Math.min(devicePixelRatio||1, 1.2);
   canvas.width = Math.max(2, Math.floor(stage.clientWidth*dpr));
   canvas.height = Math.max(2, Math.floor(stage.clientHeight*dpr)); }
 resize(); addEventListener('resize', resize);
