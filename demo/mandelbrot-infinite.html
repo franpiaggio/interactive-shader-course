@@ -30,7 +30,7 @@
 </head>
 <body>
 <div class="wrap">
-  <div class="title">Infinite Mandelbrot Zoom<small>perturbation theory · double-double · magnification ~10¹²</small></div>
+  <div class="title">Mandelbrot 2D Zoom</div>
   <div class="stage"><canvas id="c"></canvas></div>
   <div class="bar">
     <button class="btn" id="slow" title="back">«</button>
@@ -39,7 +39,6 @@
     <input id="spd" type="range" min="-100" max="100" value="34" title="speed (left = back, right = deeper)">
   </div>
 </div>
-<div class="credit"><a href="https://franpiaggio.github.io/interactive-shader-course/" target="_blank">learn how → interactive-shader-course</a></div>
 
 <script id="frag" type="x-shader/fragment">
 // Perturbation theory with REBASING (Zhuoran's method): one high-precision reference orbit
